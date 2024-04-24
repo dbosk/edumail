@@ -1,0 +1,106 @@
+\documentclass[a4paper,10pt,article,oneside,oldfontcommands]{memoir}
+\let\subsubsection\subsection
+\let\subsection\section
+\let\section\chapter
+
+\input{preamble.tex}
+\noweboptions{longxref,breakcode}
+
+\usepackage[noamsthm,notheorems]{beamerarticle}
+\setjobnamebeamerversion{slides}
+
+%\usepackage{authblk}
+%\let\institute\affil
+
+\title{%
+  Mail utilities for education
+}
+\author{%
+  Daniel Bosk
+}
+\institute{%
+  KTH EECS
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  \input{abstract.tex}
+\end{abstract}
+\clearpage
+
+\tableofcontents
+\clearpage
+
+@
+\section{Introduction}
+
+This is the documentation of the [[<<edumail.py>>]] Python 3 script.
+It does \dots
+
+\subsection{Structural overview}
+
+We use the standard structure for the script.
+We have import statements at the top in the [[<<imports>>]] code block.
+Then we have functions in the [[<<functions>>]] code block.
+Finally, we have a [[main]] function which is run if the script is run directly 
+but not if it is imported.
+<<edumail.py>>=
+#!/usr/bin/env python3
+
+<<imports>>
+<<functions>>
+
+def main(argv):
+    <<main body>>
+
+if __name__ == '__main__':
+  sys.exit(main(sys.argv[1:]))
+@
+
+Since we rely on the [[sys]] module we need
+<<imports>>=
+import sys
+@
+
+\subsection{Parsing command-line arguments}
+
+The main body is
+<<main body>>=
+<<parse command-line arguments>>
+<<process command-line arguments and do main execution>>
+@
+
+To parse command-line arguments we will make use of [[argparse]]:
+<<imports>>=
+import argparse
+@
+
+We first create a parser, then set up the valid arguments and finally provide 
+the dictionary [[args]] containing each argument that was passed on the command 
+line.
+<<parse command-line arguments>>=
+argp = argparse.ArgumentParser(description="Mail utilities for education")
+
+<<valid argparse arguments>>
+
+args = vars(argp.parse_args(argv[1:]))
+@
+
+\subsection{Processing command-line arguments, the main functionality}
+
+We expect a list of arguments on the command line.
+<<valid argparse arguments>>=
+argp.add_argument("arg", nargs="+", help="An argument to parse")
+@
+
+
+
+\printbibliography{}
+
+
+\section{An index of the code blocks}
+\nowebchunks
+
+\end{document}

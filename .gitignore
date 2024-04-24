@@ -1,3 +1,11 @@
+didactic.sty
+edumail
+edumail.pdf
+edumail.py
+edumail.tex
+ltxobj/
+
+
 ## Core latex/pdflatex auxiliary files:
 *.aux
 *.lof
