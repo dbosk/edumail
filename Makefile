@@ -24,16 +24,14 @@ clean:
 	${RM} edumail edumail.sh edumail.pdf edumail.tex
 
 
-PKG_NAME-main= 			edumail
-PKG_INSTALL_FILES-main=	edumail
-PKG_PREFIX-main= 		/usr/local
-PKG_INSTALL_DIR-main=	/bin
-PKG_TARBALL_FILES-main= ${PKG_FILES-main} Makefile
+.PHONY: install
+PREFIX=${HOME}
+install: edumail
+	install -m 755 $^ ${PREFIX}/bin
 
 
 INCLUDE_MAKEFILES=./makefiles
 include ${INCLUDE_MAKEFILES}/tex.mk
 include ${INCLUDE_MAKEFILES}/noweb.mk
-include ${INCLUDE_MAKEFILES}/pkg.mk
 INCLUDE_DIDACTIC=./didactic
 include ${INCLUDE_DIDACTIC}/didactic.mk
