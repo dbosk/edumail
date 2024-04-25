@@ -5,6 +5,7 @@ LATEXFLAGS+=	-shell-escape
 
 edumail.pdf: edumail.tex didactic.sty
 edumail.pdf: abstract.tex
+edumail.pdf: edumail
 
 edumail.tex: edumail.nw
 
@@ -12,15 +13,15 @@ edumail.tex: edumail.nw
 .PHONY:
 all: edumail
 
-edumail.py: edumail.nw
-edumail: edumail.py
+edumail.sh: edumail.nw
+edumail: edumail.sh
 	cp $^ $@
 	chmod +x $@
 
 
 .PHONY: clean
 clean:
-	${RM} edumail edumail.py edumail.pdf edumail.tex
+	${RM} edumail edumail.sh edumail.pdf edumail.tex
 
 
 PKG_NAME-main= 			edumail

@@ -36,71 +36,387 @@
 @
 \section{Introduction}
 
-This is the documentation of the [[<<edumail.py>>]] Python 3 script.
-It does \dots
+This is the documentation of the [[<<edumail.sh>>]] bash script.
+The idea is that it's a command that works like Git with different subcommands.
+We'll use a simple construction to achieve this.
 
 \subsection{Structural overview}
 
 We use the standard structure for the script.
-We have import statements at the top in the [[<<imports>>]] code block.
-Then we have functions in the [[<<functions>>]] code block.
-Finally, we have a [[main]] function which is run if the script is run directly 
-but not if it is imported.
-<<edumail.py>>=
-#!/usr/bin/env python3
+<<edumail.sh>>=
+#!/bin/bash
+# This file is generated from edumail.nw.
 
-<<imports>>
+<<variables>>
 <<functions>>
 
-def main(argv):
-    <<main body>>
-
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+<<parse which subcommand should be called and call its function>>
 @
 
-Since we rely on the [[sys]] module we need
-<<imports>>=
-import sys
+\subsection{Invoke right subcommand function}
+
+The first argument ([[$1]]) should be the subcommand.
+This should be the same as the name of its function.
+This way we can simply shift the arguments and call that function,
+then it can parse the rest of the arguments as it sees fit.
+<<parse which subcommand should be called and call its function>>=
+cmd="$1"
+shift
+$cmd "$@"
 @
 
-\subsection{Parsing command-line arguments}
+\section{The results subcommands}
 
-The main body is
-<<main body>>=
-<<parse command-line arguments>>
-<<process command-line arguments and do main execution>>
+We want a set of subcommands that can be used to get a student's results from 
+the course in question.
+It will not get the student's actual results, but rather return lines that can 
+fetch the results.
+
+\begin{example}\label{email1}
+An email from a student\footnote{%
+  The student's identity is anonymized and the fictitious name has no 
+  relation to any of the student's attributes (other than being a 
+  student).%
+} may look like the following.
+The lines that are marked contain useful data.
+\inputminted[highlightlines={2,5,11-12,14}]{text}{email1.txt}
+This email should then yield the following output:
+\begin{minted}{bash}
+ladok student -c DD1317 -r \
+  $(canvaslms users -sc DD1317 "Studenten Studentensson" -l | cut -f 3)
+canvaslms submissions -c DD1317 \
+  -u "Studenten Studentensson"
+kthutils forms export restlabb23/24 \
+  | grep "Studenten Studentensson"
+\end{minted}
+\end{example}
+
+\begin{example}\label{email2}
+Another email:
+\inputminted[highlightlines={2,5,12}]{text}{email2.txt}
+This email should then yield the following output:
+\begin{minted}{bash}
+ladok student -c XXX -r \
+  $(canvaslms users -sc ".*" "^studenten@kth.se" -l | cut -f 3)
+canvaslms submissions -c ".*" \
+  -u "^studenten@kth.se" \
+  -a "granskning"
+kthutils forms export restlabb23/24 \
+  | grep "Studenten Studentensdotter"
+\end{minted}
+\end{example}
+
+We'll use this from Vim when we write the reply.
+We should be able to pass a filename as argument.
+That file should contain the email as shown in the examples above.
+And it should generate the output as shown in the examples above to stdout.
+The idea is then that we do
+\begin{quote}
+  [[.!edumail.sh results %]]
+\end{quote}
+on a blank line to get the output.
+Then we can do
+\begin{quote}
+  [['<,'>!bash]]
+\end{quote}
+to select the relevant lines of the output to execute.
+
+We'll add a subcommand for each of the three lines in the output.
+One that focuses on the [[ladok]] command, one on [[canvaslms]] and the last on 
+restlabb.
+Then we'll let the [[results]] subcommand call these three subcommands.
+<<functions>>=
+ladok() {
+  <<construct [[ladok]] command from email>>
+}
+canvas() {
+  <<construct [[canvaslms]] command from email>>
+}
+restlabb() {
+  <<construct restlabb command from email>>
+}
+
+results() {
+  ladok "$@"
+  canvas "$@"
+  restlabb "$@"
+}
 @
 
-To parse command-line arguments we will make use of [[argparse]]:
-<<imports>>=
-import argparse
+This function [[ladok]] will hide the [[ladok]] command from us, so that we 
+can't use it.
+However, this won't be an issue since we don't need to invoke it in this 
+script.
+We simply write [[ladok]] in the output.
+
+\subsection{Overall algorithm}
+
+All the subcommands will have to parse the email.
+It's just that they try to get different data out of it.
+
+The most efficient approach would be to parse the email only once.
+During that round we extract all the data we need.
+Then each out the functions can use that data to construct the output.
+
+However, considering that we might call the subcommands directly, each 
+subcommand must ensure the email has been parsed.
+This speaks for a more independent design of each and, unfortunately, results 
+in the email being parsed multiple times.
+This has other advantages, such that in a future design of [[results]], we might 
+check which of the subcommands are actually needed.
+
+We'll write functions that extract different data from the email.
+These can later be used in the subcommands to construct the output.
+
+
+\section{Extracting the student's identifier}
+
+We'll start by extracting the student's name or institutional email address.
+We prefer the institutional email address, but if that's not available we'll 
+use the name.
+The function will take the email file as an argument.
+<<functions>>=
+student() {
+  local file="$1"
+  if ! student_id "$file"; then
+    student_name "$file"
+  fi
+}
+student_id() {
+  local file="$1"
+  <<extract student's email address>>
+}
+student_name() {
+  local file="$1"
+  <<extract student's name>>
+}
 @
 
-We first create a parser, then set up the valid arguments and finally provide 
-the dictionary [[args]] containing each argument that was passed on the command 
-line.
-<<parse command-line arguments>>=
-argp = argparse.ArgumentParser(description="Mail utilities for education")
-
-<<valid argparse arguments>>
-
-args = vars(argp.parse_args(argv[1:]))
+To extract the email address, we want to extract the line starting with 
+\enquote{To: }.
+Then we want to extract the email address from that line.
+This is because we're doing this when we reply to the email, thus the student's 
+name and email are in the \enquote{To: } field.
+We'll try to match a KTH email address.
+<<extract student's email address>>=
+local email
+email=$(grep "^To: " "$file" \
+        | sed -En "s/^To: [^<]**<?(${USER_FUSER_FORMAT}@${DOMAIN})>?.*$/\1/p")
+if [[ -n "$email" ]]; then
+  echo "$email"
+  return 0
+else
+  return 1
+fi
+<<variables>>=
+DOMAIN="([a-zA-Z0-9]+\.)?kth\.se"
+USER_FORMAT="[a-zA-Z0-9]+"
 @
 
-\subsection{Processing command-line arguments, the main functionality}
-
-We expect a list of arguments on the command line.
-<<valid argparse arguments>>=
-argp.add_argument("arg", nargs="+", help="An argument to parse")
+If we didn't find an email address, we'll try to extract the student's name.
+<<extract student's name>>=
+local name
+name=$(grep "^To: " "$file" | sed 's/^To: //' | sed "s/ <.*//")
+if [[ -n "$name" ]]; then
+  echo "$name"
+  return 0
+else
+  return 1
+fi
 @
 
+Let's test this on the emails from the examples above.
+Running [[student_id]] on \cref{email1} should yield the following output:
+\begin{pycode}
+import subprocess
+
+def print_verbatim(output):
+    print(r"\begin{verbatim}")
+    print(output)
+    print(r"\end{verbatim}")
+
+output = subprocess.run(["./edumail", "student_id", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+Running [[student_id]] on \cref{email2} should yield the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "student_id", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+
+
+\section{Extracting the course}
+
+We'll now extract the course from the email.
+It's probably too difficult to try to extract the course title.
+But we can for sure extract the course code, since that is on a very specific 
+format (\eg DD1317).
+We can also extract the course's short name, in the case of DD1317 during 2023 
+it would be prgi23.
+
+\subsection{Cleaning irrelevant headers}
+
+There are some lines that we don't want to match anything on.
+For example, we don't want to match the email identifier in the [[In-Reply-To]] 
+header.
+For this, we construct a filter which removes these lines.
+<<functions>>=
+clean() {
+  local file="$1"
+  grep -vE "^(${IGNORE_HEADERS})" "$file"
+}
+<<variables>>=
+IGNORE_HEADERS="In-Reply-To:|References:|Message-ID:|Content-Type:"
+IGNORE_HEADERS="${IGNORE_HEADERS}|^MIME-Version:|^X-Mailer:|^User-Agent:"
+@
+
+\subsection{Extracting course identifiers from clean email}
+
+This leaves us with the following construction.
+We first match for course codes, then for course nick names.
+Since these may occur several times in the email, we'll sort them and remove 
+duplicates.
+Since this might output several lines, we'll make a disjunct regex.
+We'll do this with [[make_disjunct_regex]] discussed below.
+<<functions>>=
+course() {
+  local file="$1"
+  (course_code "$file"; course_nick "$file") \
+    | make_disjunct_regex
+}
+course_code() {
+  local file="$1"
+  clean "$file" \
+    | grep -Eo "${COURSE_CODE}" \
+    | sort -u
+}
+course_nick() {
+  local file="$1"
+  clean "$file" \
+    | grep -Eo "${COURSE_NICK}" \
+    | sort -u
+}
+<<variables>>=
+COURSE_CODE="[A-Z]{2,3}[0-9]{3,4}[A-Z]?"
+COURSE_NICK="[a-z]+[0-9]{2}"
+@
+
+To make a disjunct regex, we simply concatenate the lines with a pipe.
+We must also make sure to not end with a pipe.
+That is, turning
+\begin{minted}{text}
+DD1317
+prgi23
+\end{minted}
+into
+\begin{minted}{text}
+(DD1317|prgi23)
+\end{minted}
+<<functions>>=
+make_disjunct_regex() {
+  echo -n "("
+  tr '\n' '|' | sed 's/|$//'
+  echo -n ")"
+}
+@ Let's test this on the example above.
+\begin{pycode}
+output = subprocess.run(
+  "(echo DD1317; echo prgi23) | ./edumail make_disjunct_regex",
+  shell=True, capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+
+If we run this on the emails from the examples above, we should get the 
+following output.
+Running [[course]] on \cref{email1} should yield the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "course", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+
+Running [[course]] on \cref{email2} should yield the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "course", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+This is correct, since the email doesn't contain any course code.
+Infact, \cref{email2} doesn't identify any course at all.
+
+
+\section{Constructing the command lines}
+
+Now that we have some building blocks, we can construct the command lines.
+Since we can't get perfect results from the email, we'll use variables for the 
+different identifiers.
+That way we can easily correct them in one place, instead of several.
+\begin{example}[Actually desired output]
+In fact, we want the output of \cref{email1} to be the following.
+\begin{minted}{bash}
+COURSE="DD1317"
+STUDENT="Studenten Studentensson"
+ladok student -c "${COURSE}" -r \
+  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l | cut -f 3)
+canvaslms submissions -c "{COURSE}" \
+  -u "${STUDENT}"
+kthutils forms export restlabb23/24 \
+  | grep "${STUDENT}"
+\end{minted}
+This way, if there is any error in the identifiers, we can easily correct them 
+in one place.
+\end{example}
+
+Now, the functions should be possible to use individually, but we don't want 
+the same variables several times.
+This gives us the following construction.
+<<construct [[ladok]] command from email>>=
+<<output variables if not already done>>
+echo 'ladok student -c "${COURSE_CODE}" -r \'
+echo '  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l | cut -f 3)'
+<<construct [[canvaslms]] command from email>>=
+<<output variables if not already done>>
+echo 'canvaslms submissions -c "${COURSE}" \'
+echo '  -u "${STUDENT}"'
+<<construct restlabb command from email>>=
+<<output variables if not already done>>
+echo 'kthutils forms export restlabb23/24 \'
+echo '  | grep "${STUDENT}"'
+@
+
+\subsection{Outputting the variables}
+
+We only want to output the variables if they haven't already been output.
+To achieve this we'll use a flag variable.
+<<output variables if not already done>>=
+local file="$1"
+if [[ -z "$OUTPUTTED_VARS" ]]; then
+  OUTPUTTED_VARS=1
+  echo "COURSE=\"$(course $file)\""
+  echo "COURSE_CODE=\"$(course_code $file)\""
+  echo "STUDENT=\"$(student $file)\""
+fi
+@
+
+\subsection{Testing on the emails}
+
+Let's test this on the emails from the examples above.
+Running [[results]] on \cref{email1} now yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "results", "email1.txt"],
+                        capture_output=True)
+print_verbatim(str(output.stdout, "utf-8"))
+\end{pycode}
+Running [[results]] on \cref{email2} now yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "results", "email2.txt"],
+                        capture_output=True)
+print_verbatim(str(output.stdout, "utf-8"))
+\end{pycode}
 
 
 \printbibliography{}
-
-
-\section{An index of the code blocks}
-\nowebchunks
 
 \end{document}
