@@ -201,7 +201,7 @@ We'll try to match a KTH email address.
 <<extract student's email address>>=
 local email
 email=$(grep "^To: " "$file" \
-        | sed -En "s/^To: [^<]**<?(${USER_FUSER_FORMAT}@${DOMAIN})>?.*$/\1/p")
+        | sed -En "s/^To: [^<]**<?(${USER_FORMAT}@${DOMAIN})>?.*$/\1/p")
 if [[ -n "$email" ]]; then
   echo "$email"
   return 0
@@ -226,7 +226,7 @@ fi
 @
 
 Let's test this on the emails from the examples above.
-Running [[student_id]] on \cref{email1} should yield the following output:
+Running [[student]] on \cref{email1} should yield the following output:
 \begin{pycode}
 import subprocess
 
@@ -235,13 +235,13 @@ def print_verbatim(output):
     print(output)
     print(r"\end{verbatim}")
 
-output = subprocess.run(["./edumail", "student_id", "email1.txt"],
+output = subprocess.run(["./edumail", "student", "email1.txt"],
                         capture_output=True)
 print_verbatim(output.stdout)
 \end{pycode}
 Running [[student_id]] on \cref{email2} should yield the following output:
 \begin{pycode}
-output = subprocess.run(["./edumail", "student_id", "email2.txt"],
+output = subprocess.run(["./edumail", "student", "email2.txt"],
                         capture_output=True)
 print_verbatim(output.stdout)
 \end{pycode}
