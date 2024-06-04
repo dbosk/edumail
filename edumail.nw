@@ -353,6 +353,78 @@ This is correct, since the email doesn't contain any course code.
 Infact, \cref{email2} doesn't identify any course at all.
 
 
+\section{Extracting assignments}
+
+We also want to extract the assignments.
+There are two alternatives: individual assignments or assignment groups (LADOK 
+modules).
+
+\subsection{Assignment groups}
+
+The assignment groups are the easiest to extract, they're always named 
+something like LAB1, LAB2, LAB3, \etc.
+We can match those with a regex.
+<<variables>>=
+ASSIGNMENT_GROUP="[A-Z]+[0-9]+"
+@
+
+Now we'll do like we've done before and grep for these in the email, getting 
+only the matching parts.
+However, if we don't get anything, we'll use the regex itself as the output.
+The reason is that this will match all assignment groups in Canvas and ignore 
+any other assignment groups (\eg teaching material).
+
+We also note that we must not match the course code, since those also fit the 
+pattern in [[ASSIGNMENT_GROUP]].
+<<functions>>=
+assignment_groups() {
+  local file="$1"
+  local groups=$(clean "$file" \
+                  | grep -Eo "${ASSIGNMENT_GROUP}" \
+                  | grep -Ev "${COURSE_CODE}" \
+                  | sort -u)
+  if [[ -n "$groups" ]]; then
+    echo "$groups"
+  else
+    echo "^${ASSIGNMENT_GROUP}"
+  fi | make_disjunct_regex
+}
+@
+
+None of the examples (\cref{email1,email2}) contain any assignment groups.
+But they do contain individual assignments.
+\begin{example}[Assignment groups]\label{email3}
+We can consider the following email that contains assignment groups.
+\inputminted[highlightlines={2,4,12}]{text}{email3.txt}
+This email should then yield the following output:
+\begin{minted}{bash}
+canvaslms submissions \
+  -c ".*" \
+  -u "^studuser@kth.se" \
+  -A LAB2
+\end{minted}
+\end{example}
+
+Let's test [[assignment_groups]] on \cref{email3} above.
+It yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignment_groups", "email3.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+
+Let's also try it on \cref{email1} above.
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignment_groups", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+
+\subsection{Assignments}
+
+For the assignment we need a list of names to look for.
+
+
 \section{Constructing the command lines}
 
 Now that we have some building blocks, we can construct the command lines.
@@ -380,17 +452,46 @@ the same variables several times.
 This gives us the following construction.
 <<construct [[ladok]] command from email>>=
 <<output variables if not already done>>
-echo 'ladok student -c "${COURSE_CODE}" -r \'
-echo '  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l | cut -f 3)'
 <<construct [[canvaslms]] command from email>>=
 <<output variables if not already done>>
-echo 'canvaslms submissions -c "${COURSE}" \'
-echo '  -u "${STUDENT}"'
 <<construct restlabb command from email>>=
 <<output variables if not already done>>
-echo 'kthutils forms export restlabb23/24 \'
-echo '  | grep "${STUDENT}"'
 @
+
+
+\subsection{Generate the [[ladok]] command}
+
+The [[ladok]] command is quite straight forward.
+However, we need the course code for LADOK, not any identifier.
+<<construct [[ladok]] command from email>>=
+echo 'ladok student -c "${COURSE_CODE}" -r \'
+echo '  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l | cut -f 3)'
+@
+
+\subsection{Generate the [[canvaslms]] command}
+
+For the [[canvaslms]] command we can do some output modification to make it 
+useful.
+We usually don't need all columns in its output.
+<<construct [[canvaslms]] command from email>>=
+echo 'canvaslms submissions \'
+echo '  -c "${COURSE}" \'
+echo '  -a "${ASSIGN}" \'
+echo '  -A "${ASSIGN_GRPS}" \'
+echo '  -u "${STUDENT}" \'
+echo '  | cut -f 2,4-'
+@
+
+\subsection{Generate the restlabb command}
+
+We simply grep for the student in the restlabb export.
+Here also, we don't need all the columns.
+<<construct restlabb command from email>>=
+echo 'kthutils forms export restlabb23/24 \'
+echo '  | grep "${STUDENT}" \'
+echo '  | cut -f 1,2,4,6,7'
+@
+
 
 \subsection{Outputting the variables}
 
@@ -402,6 +503,8 @@ if [[ -z "$OUTPUTTED_VARS" ]]; then
   OUTPUTTED_VARS=1
   echo "COURSE=\"$(course $file)\""
   echo "COURSE_CODE=\"$(course_code $file)\""
+  echo "ASSIGN=\"$(assignments $file)\""
+  echo "ASSIGN_GRPS=\"$(assignment_groups $file)\""
   echo "STUDENT=\"$(student $file)\""
 fi
 @
