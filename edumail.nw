@@ -433,16 +433,11 @@ different identifiers.
 That way we can easily correct them in one place, instead of several.
 \begin{example}[Actually desired output]
 In fact, we want the output of \cref{email1} to be the following.
-\begin{minted}{bash}
-COURSE="DD1317"
-STUDENT="Studenten Studentensson"
-ladok student -c "${COURSE}" -r \
-  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l | cut -f 3)
-canvaslms submissions -c "{COURSE}" \
-  -u "${STUDENT}"
-kthutils forms export restlabb23/24 \
-  | grep "${STUDENT}"
-\end{minted}
+\begin{pycode}
+output = subprocess.run(["./edumail", "results", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout.decode().strip())
+\end{pycode}
 This way, if there is any error in the identifiers, we can easily correct them 
 in one place.
 \end{example}
