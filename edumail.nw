@@ -260,7 +260,7 @@ it would be prgi23.
 
 There are some lines that we don't want to match anything on.
 For example, we don't want to match the email identifier in the [[In-Reply-To]] 
-header.
+header and not the year in the [[Date]] header.
 For this, we construct a filter which removes these lines.
 <<functions>>=
 clean() {
@@ -269,7 +269,13 @@ clean() {
 }
 <<variables>>=
 IGNORE_HEADERS="In-Reply-To:|References:|Message-ID:|Content-Type:"
-IGNORE_HEADERS="${IGNORE_HEADERS}|^MIME-Version:|^X-Mailer:|^User-Agent:"
+IGNORE_HEADERS="${IGNORE_HEADERS}|^MIME-Version:|^X-Mailer:"
+IGNORE_HEADERS="${IGNORE_HEADERS}|^User-Agent:|Date:"
+@
+
+We also don't want to match the reply line.
+<<variables>>=
+IGNORE_HEADERS="${IGNORE_HEADERS}|On .* wrote:$"
 @
 
 \subsection{Extracting course identifiers from clean email}
