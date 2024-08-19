@@ -581,6 +581,13 @@ output = subprocess.run(["./edumail", "results", "email2.txt"],
 print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
 
+Finally, running [[results]] on \cref{email3} yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "results", "email3.txt"],
+                        capture_output=True)
+print_verbatim(str(output.stdout, "utf-8"))
+\end{pycode}
+
 
 \printbibliography{}
 
