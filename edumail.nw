@@ -28,6 +28,8 @@
 \begin{abstract}
   \input{abstract.tex}
 \end{abstract}
+\vfill
+\inputminted[numbers=none]{text}{LICENSE}
 \clearpage
 
 \tableofcontents
