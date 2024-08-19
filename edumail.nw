@@ -480,11 +480,30 @@ echo '  | cut -f 2,4-'
 \subsection{Generate the restlabb command}
 
 We simply grep for the student in the restlabb export.
-Here also, we don't need all the columns.
+In fact, we want to make the same rewrites as the normal script does so that we 
+can quickly report any missing results if needed.
+Sometimes we miss a result because there are two results for the same student 
+and same assignment in the same run.
+We do this for all forms that we're interested in.
 <<construct restlabb command from email>>=
-echo 'kthutils forms export restlabb23/24 \'
+echo "RESTLABB_FORMS='${RESTLABB_FORMS}'"
+echo '(for form in ${RESTLABB_FORMS}; do kthutils forms export ${form}; done) \'
 echo '  | grep "${STUDENT}" \'
-echo '  | cut -f 1,2,4,6,7'
+echo '  | kthutils forms rewriter rewrite restlabb # cut -f 1,2,4,6,7'
+@ Note that we inverse the quotes on the first line above, that's because we 
+want to expand the variable [[RESTLABB_FORMS]] to include its value in the 
+output.
+@
+Let's define the variables we need for handling restlabb.
+We also want to run this for this year, last year and the latest Lab Week.
+We calculate these from the current year.
+So we must make sure to use the same naming convention when we add these forms 
+with the [[kthutils forms add]] command.
+<<variables>>=
+YEAR=$(date +%y)
+RESTLABB_FORMS="restlabb$(expr ${YEAR} - 1)/${YEAR} \
+                restlabb${YEAR}/$(expr ${YEAR} + 1) \
+                labweek20${YEAR}"
 @
 
 
