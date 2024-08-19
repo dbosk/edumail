@@ -422,7 +422,52 @@ print_verbatim(output.stdout)
 
 \subsection{Assignments}
 
-For the assignment we need a list of names to look for.
+For individual assignments we need a list of names to look for.
+We can look at \cref{email3} again, since it has both an assignment and an 
+assignment group.
+But we will also revisit \cref{email1,email2}, since both have assignments (but 
+no assignment groups).
+
+The approach will be similar to that of [[assignment_groups]], but we'll have 
+to grep for known assignment names.
+<<functions>>=
+assignments() {
+  local file="$1"
+  local assns=$(clean "$file" \
+                | grep -iEo "${ASSIGNMENT}" \
+                | sort -u)
+  if [[ -n "$assns" ]]; then
+    echo "$assns"
+  else
+    echo "^${ASSIGNMENT}"
+  fi | make_disjunct_regex
+}
+@
+
+The known assignments names are as follows.
+<<variables>>=
+ASSIGNMENT="granskn|lab(b|oration) ?[0-9]*|spec|redovisn|projekt|datorprov"
+@
+
+Let's test this on the emails from the examples above.
+Running [[assignments]] on \cref{email1} yield the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignments", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+The output from \cref{email2} is the following:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignments", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+The output from \cref{email3} is the following:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignments", "email3.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
 
 
 \section{Constructing the command lines}
