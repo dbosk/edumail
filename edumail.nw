@@ -540,15 +540,12 @@ want to expand the variable [[RESTLABB_FORMS]] to include its value in the
 output.
 @
 Let's define the variables we need for handling restlabb.
-We also want to run this for this year, last year and the latest Lab Week.
-We calculate these from the current year.
-So we must make sure to use the same naming convention when we add these forms 
-with the [[kthutils forms add]] command.
+We can simply look through all the forms that we have.
+At least those that match \enquote{restlabb} and \enquote{labweek}.
 <<variables>>=
-YEAR=$(date +%y)
-RESTLABB_FORMS="restlabb$(expr ${YEAR} - 1)/${YEAR} \
-                restlabb${YEAR}/$(expr ${YEAR} + 1) \
-                labweek20${YEAR}"
+RESTLABB_FORMS=$(kthutils config forms.added_forms \
+                 | grep -iE "(restlabb|labweek)" \
+                 | sed -En "s/^forms\.added_forms\.(.*) = .*$/\1/p")
 @
 
 
