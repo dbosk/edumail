@@ -395,7 +395,7 @@ None of the examples (\cref{email1,email2}) contain any assignment groups.
 But they do contain individual assignments.
 \begin{example}[Assignment groups]\label{email3}
 We can consider the following email that contains assignment groups.
-\inputminted[highlightlines={2,4,12}]{text}{email3.txt}
+\inputminted[highlightlines={2,5,13}]{text}{email3.txt}
 This email should then yield the following output:
 \begin{minted}{bash}
 canvaslms submissions \
