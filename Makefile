@@ -29,6 +29,10 @@ PREFIX=${HOME}
 install: edumail
 	install -m 755 $^ ${PREFIX}/bin
 
+.PHONY: release
+release: edumail.pdf edumail
+	gh release create $(shell date +%Y%m%d-%H%M) edumail.pdf edumail
+
 
 INCLUDE_MAKEFILES=./makefiles
 include ${INCLUDE_MAKEFILES}/tex.mk
