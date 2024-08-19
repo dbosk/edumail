@@ -28,6 +28,8 @@
 \begin{abstract}
   \input{abstract.tex}
 \end{abstract}
+\vfill
+\inputminted[numbers=none]{text}{LICENSE}
 \clearpage
 
 \tableofcontents
@@ -395,7 +397,7 @@ None of the examples (\cref{email1,email2}) contain any assignment groups.
 But they do contain individual assignments.
 \begin{example}[Assignment groups]\label{email3}
 We can consider the following email that contains assignment groups.
-\inputminted[highlightlines={2,4,12}]{text}{email3.txt}
+\inputminted[highlightlines={2,5,13}]{text}{email3.txt}
 This email should then yield the following output:
 \begin{minted}{bash}
 canvaslms submissions \
@@ -422,7 +424,52 @@ print_verbatim(output.stdout)
 
 \subsection{Assignments}
 
-For the assignment we need a list of names to look for.
+For individual assignments we need a list of names to look for.
+We can look at \cref{email3} again, since it has both an assignment and an 
+assignment group.
+But we will also revisit \cref{email1,email2}, since both have assignments (but 
+no assignment groups).
+
+The approach will be similar to that of [[assignment_groups]], but we'll have 
+to grep for known assignment names.
+<<functions>>=
+assignments() {
+  local file="$1"
+  local assns=$(clean "$file" \
+                | grep -iEo "${ASSIGNMENT}" \
+                | sort -u)
+  if [[ -n "$assns" ]]; then
+    echo "$assns"
+  else
+    echo "^${ASSIGNMENT}"
+  fi | make_disjunct_regex
+}
+@
+
+The known assignments names are as follows.
+<<variables>>=
+ASSIGNMENT="granskn|lab(b|oration) ?[0-9]*|spec|redovisn|projekt|datorprov"
+@
+
+Let's test this on the emails from the examples above.
+Running [[assignments]] on \cref{email1} yield the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignments", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+The output from \cref{email2} is the following:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignments", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+The output from \cref{email3} is the following:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignments", "email3.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
 
 
 \section{Constructing the command lines}
@@ -480,11 +527,27 @@ echo '  | cut -f 2,4-'
 \subsection{Generate the restlabb command}
 
 We simply grep for the student in the restlabb export.
-Here also, we don't need all the columns.
+In fact, we want to make the same rewrites as the normal script does so that we 
+can quickly report any missing results if needed.
+Sometimes we miss a result because there are two results for the same student 
+and same assignment in the same run.
+We do this for all forms that we're interested in.
 <<construct restlabb command from email>>=
-echo 'kthutils forms export restlabb23/24 \'
+echo "RESTLABB_FORMS='${RESTLABB_FORMS}'"
+echo '(for form in ${RESTLABB_FORMS}; do kthutils forms export ${form}; done) \'
 echo '  | grep "${STUDENT}" \'
-echo '  | cut -f 1,2,4,6,7'
+echo '  | kthutils forms rewriter rewrite restlabb # cut -f 1,2,4,6,7'
+@ Note that we inverse the quotes on the first line above, that's because we 
+want to expand the variable [[RESTLABB_FORMS]] to include its value in the 
+output.
+@
+Let's define the variables we need for handling restlabb.
+We can simply look through all the forms that we have.
+At least those that match \enquote{restlabb} and \enquote{labweek}.
+<<variables>>=
+RESTLABB_FORMS=$(kthutils config forms.added_forms \
+                 | grep -iE "(restlabb|labweek)" \
+                 | sed -En "s/^forms\.added_forms\.(.*) = .*$/\1/p")
 @
 
 
@@ -516,6 +579,13 @@ print_verbatim(str(output.stdout, "utf-8"))
 Running [[results]] on \cref{email2} now yields the following output:
 \begin{pycode}
 output = subprocess.run(["./edumail", "results", "email2.txt"],
+                        capture_output=True)
+print_verbatim(str(output.stdout, "utf-8"))
+\end{pycode}
+
+Finally, running [[results]] on \cref{email3} yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "results", "email3.txt"],
                         capture_output=True)
 print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}

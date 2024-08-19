@@ -1,0 +1,19 @@
+From: Daniel Bosk <dbosk@kth.se>
+To: Studenten Studentensson <stud@kth.se>
+Cc: "Danielbosk@kth.se" <Danielbosk@kth.se>
+Bcc:
+Subject: Re: Programmeringstekniken
+Reply-To:
+In-Reply-To: <c6ef6b2f9df04eff958e75c9955559e6ce69fa307cf44a7097c858eb51e4ac59c9278c5552b24543b6943f528f1305ea@kth.se>
+
+On fre  1 sep 2023 12:02:26, Studenten Studentensson wrote:
+>    Hej Daniel,
+> 
+>    Inne hos mig på Canvas står det att jag fått ett omdöme på "0%" alltså F
+>    på ett Datorprov (LAB2) som ska göras nästa år i Juni. Jag antar att det
+>    är en bugg, men tänker ifall det är något du kan ändra och se till att det
+>    ser rätt ut?
+> 
+>    Vänliga hälsningar,
+> 
+>    Studenten
