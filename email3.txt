@@ -1,0 +1,18 @@
+Date: Fri, 1 Sep 2023 12:02:26 +0200
+From: Studenten Studentensson <studuser@kth.se>
+To: "Danielbosk@kth.se" <Danielbosk@kth.se>
+Subject: Programmeringstekniken
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Content-Type: text/plain; charset=utf-8
+
+   Hej Daniel,
+
+   Inne hos mig på Canvas står det att jag fått ett omdöme på "0%" alltså F
+   på ett Datorprov (LAB2) som ska göras nästa år i Juni. Jag antar att det
+   är en bugg, men tänker ifall det är något du kan ändra och se till att det
+   ser rätt ut?
+
+   Vänliga hälsningar,
+
+   Studenten
