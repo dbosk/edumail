@@ -510,7 +510,7 @@ Note that if the student is in several courses and the regex [[COURSE]] match,
 then we need to filter it down to one.
 <<construct [[ladok]] command from email>>=
 echo 'ladok student -c "${COURSE_CODE}" -r \'
-echo '  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l \
+echo '  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l \'
 echo '      | cut -f 3 | uniq)'
 @
 
