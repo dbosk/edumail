@@ -137,11 +137,19 @@ canvas() {
 restlabb() {
   <<construct restlabb command from email>>
 }
+missing() {
+  <<construct missing command from email>>
+}
+report() {
+  <<construct report command from email>>
+}
 
 results() {
   ladok "$@"
   canvas "$@"
   restlabb "$@"
+  missing "$@"
+  report "$@"
 }
 @
 
@@ -498,6 +506,10 @@ This gives us the following construction.
 <<output variables if not already done>>
 <<construct restlabb command from email>>=
 <<output variables if not already done>>
+<<construct missing command from email>>=
+<<output variables if not already done>>
+<<construct report command from email>>=
+<<output variables if not already done>>
 @
 
 
@@ -555,14 +567,38 @@ RESTLABB_FORMS=$(kthutils config forms.added_forms \
 @
 
 
+\subsection{Generate the missing command}
+
+We can use the [[canvaslms results -M]] command to output any missing 
+assignments.
+<<construct missing command from email>>=
+echo 'canvaslms results \'
+echo '  -c "${COURSE}" \'
+echo '  -A "${ASSIGN_GRPS}" \'
+echo '  -u "${STUDENT}" \'
+echo '  -M'
+@
+
+
+\subsection{Generate the report command}
+
+Then the reporting will be similar to the above, just without the [[-M]] flag.
+<<construct report command from email>>=
+echo 'canvaslms results \'
+echo '  -c "${COURSE}" \'
+echo '  -A "${ASSIGN_GRPS}" \'
+echo '  -u "${STUDENT}" \'
+echo '| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//"'
+@ This output, in turn, can be piped to the [[ladok report -fv]] command.
+
 \subsection{Outputting the variables}
 
 We only want to output the variables if they haven't already been output.
 To achieve this we'll use a flag variable.
 <<output variables if not already done>>=
 local file="$1"
-if [[ -z "$OUTPUTTED_VARS" ]]; then
-  OUTPUTTED_VARS=1
+if [[ -z "$VARS_ALREADY_OUTPUT" ]]; then
+  VARS_ALREADY_OUTPUT=1
   echo "COURSE=\"$(course $file)\""
   echo "COURSE_CODE=\"$(course_code $file)\""
   echo "ASSIGN=\"$(assignments $file)\""
