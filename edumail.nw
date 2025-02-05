@@ -375,7 +375,7 @@ The assignment groups are the easiest to extract, they're always named
 something like LAB1, LAB2, LAB3, \etc.
 We can match those with a regex.
 <<variables>>=
-ASSIGNMENT_GROUP="[A-Z]+[0-9]+"
+ASSIGNMENT_GROUP="[A-Z][A-Z][A-Z]+[0-9]+"
 @
 
 Now we'll do like we've done before and grep for these in the email, getting 
@@ -396,9 +396,11 @@ assignment_groups() {
   if [[ -n "$groups" ]]; then
     echo "$groups"
   else
-    echo "^${ASSIGNMENT_GROUP}"
+    echo "^${ASSIGNMENT_GROUP_DEFAULT}"
   fi | make_disjunct_regex
 }
+<<variables>>=
+ASSIGNMENT_GROUP_DEFAULT="(LAB|INL|SEM)[0-9]+"
 @
 
 None of the examples (\cref{email1,email2}) contain any assignment groups.
