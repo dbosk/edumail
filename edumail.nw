@@ -242,9 +242,9 @@ ensure that the email file is passed or piped to both functions.
 <<functions>>=
 student() {
   local file=$(file_or_stdin "$1")
-  if ! student_id "$file"; then
-    student_name "$file"
-  fi
+  student_id "$file" \
+  || student_name "$file" \
+  || any_email "$file"
 }
 @
 
@@ -280,6 +280,24 @@ student_name() {
   name=$(grep "^To: " $file | sed 's/^To: //' | sed "s/ <.*//")
   if [[ -n "$name" ]]; then
     echo "$name"
+    return 0
+  else
+    return 1
+  fi
+}
+@
+
+If we didn't find any useful data in the email headers,
+we can also look for the email address anywhere in the email (body).
+This is useful when we pipe text to the script, since then we don't necessarily 
+include the headers.
+<<functions>>=
+any_email() {
+  local file=$(file_or_stdin "$1")
+  local email
+  email=$(grep -Eo "${USER_FORMAT}@${DOMAIN}" "$file" | head -n 1)
+  if [[ -n "$email" ]]; then
+    echo "$email"
     return 0
   else
     return 1
