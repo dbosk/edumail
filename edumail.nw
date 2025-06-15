@@ -150,33 +150,30 @@ Then we can do
 \end{quote}
 to select the relevant lines of the output to execute.
 
-We'll add a subcommand for each of the three lines in the output.
+We'll add a subcommand for each of the lines in the output above.
 One that focuses on the [[ladok]] command, one on [[canvaslms]] and the last on 
 restlabb.
-Then we'll let the [[results]] subcommand call these three subcommands.
-<<functions>>=
-ladok() {
-  <<construct [[ladok]] command from email>>
-}
-canvas() {
-  <<construct [[canvaslms]] command from email>>
-}
-restlabb() {
-  <<construct restlabb command from email>>
-}
-missing() {
-  <<construct missing command from email>>
-}
-report() {
-  <<construct report command from email>>
-}
+Then we'll let the [[results]] subcommand call these subcommands.
 
+Tools like [[grep]] and [[sed]] are very useful because they either take a file 
+as input or read from stdin.
+So while we in most cases can read the email from a file, we also want to be 
+able to pipe the email to the script.
+
+The subcommand functions will usually be quite straight forward in considering 
+this, but for the [[results]] subcommand we need each subcommand called to get 
+the same input.
+So we must ensure that each of the commands can read stdin, which we do with 
+the function~[[file_or_stdin]].
+<<functions>>=
 results() {
-  ladok "$@"
-  canvas "$@"
-  restlabb "$@"
-  missing "$@"
-  report "$@"
+  local file=$(file_or_stdin "$1")
+  shift
+  ladok "$file" "$@"
+  canvas "$file" "$@"
+  restlabb "$file" "$@"
+  missing "$file" "$@"
+  report "$file" "$@"
 }
 @
 
@@ -185,6 +182,7 @@ can't use it.
 However, this won't be an issue since we don't need to invoke it in this 
 script.
 We simply write [[ladok]] in the output.
+And the execution will happen later in the editor.
 
 \subsection{Overall algorithm}
 
@@ -205,27 +203,48 @@ check which of the subcommands are actually needed.
 We'll write functions that extract different data from the email.
 These can later be used in the subcommands to construct the output.
 
+\subsection{Function design}
+
+The functions will be designed to take a file as argument.
+Or if the email is piped to the script, they will read from stdin.
+To achieve this we can rely on the same idea as in the UNIX commands:
+if they don't get any file as argument, they read from stdin.
+(We can use [[/dev/stdin]] to read from stdin, but keep the structure of the 
+code.)
+Usually this will work, since we only parse the email once in each function.
+
+However, sometimes we need to read stdin twice.
+Then we need to keep a copy of the email in a temporary file.
+We can do this by checking if the file argument is an empty string.
+If it is, we create a temporary file and read from stdin into that file.
+Then we pass the temporary file to the function.
+<<functions>>=
+file_or_stdin() {
+  local file="$1"
+  if [[ "$file" = "" ]]; then
+    file=$(mktemp)
+    cat > "$file"
+  fi
+  echo "$file"
+}
+@
+
 
 \section{Extracting the student's identifier}
 
 We'll start by extracting the student's name or institutional email address.
 We prefer the institutional email address, but if that's not available we'll 
 use the name.
-The function will take the email file as an argument.
+The function will take the email file as an argument---however, if that is en 
+empty string, we want to use stdin.
+Since we want to use [[student_name]] if [[student_id]] fails, we need to 
+ensure that the email file is passed or piped to both functions.
 <<functions>>=
 student() {
-  local file="$1"
+  local file=$(file_or_stdin "$1")
   if ! student_id "$file"; then
     student_name "$file"
   fi
-}
-student_id() {
-  local file="$1"
-  <<extract student's email address>>
-}
-student_name() {
-  local file="$1"
-  <<extract student's name>>
 }
 @
 
@@ -235,31 +254,37 @@ Then we want to extract the email address from that line.
 This is because we're doing this when we reply to the email, thus the student's 
 name and email are in the \enquote{To: } field.
 We'll try to match a KTH email address.
-<<extract student's email address>>=
-local email
-email=$(grep "^To: " "$file" \
-        | sed -En "s/^To: [^<]**<?(${USER_FORMAT}@${DOMAIN})>?.*$/\1/p")
-if [[ -n "$email" ]]; then
-  echo "$email"
-  return 0
-else
-  return 1
-fi
+<<functions>>=
+student_id() {
+  local file=$(file_or_stdin "$1")
+  local email
+  email=$(grep "^To: " "$file" \
+          | sed -En "s/^To: [^<]**<?(${USER_FORMAT}@${DOMAIN})>?.*$/\1/p")
+  if [[ -n "$email" ]]; then
+    echo "$email"
+    return 0
+  else
+    return 1
+  fi
+}
 <<variables>>=
 DOMAIN="([a-zA-Z0-9]+\.)?kth\.se"
 USER_FORMAT="[a-zA-Z0-9]+"
 @
 
 If we didn't find an email address, we'll try to extract the student's name.
-<<extract student's name>>=
-local name
-name=$(grep "^To: " "$file" | sed 's/^To: //' | sed "s/ <.*//")
-if [[ -n "$name" ]]; then
-  echo "$name"
-  return 0
-else
-  return 1
-fi
+<<functions>>=
+student_name() {
+  local file=$(file_or_stdin "$1")
+  local name
+  name=$(grep "^To: " $file | sed 's/^To: //' | sed "s/ <.*//")
+  if [[ -n "$name" ]]; then
+    echo "$name"
+    return 0
+  else
+    return 1
+  fi
+}
 @
 
 Let's test this on the emails from the examples above.
@@ -301,7 +326,7 @@ header and not the year in the [[Date]] header.
 For this, we construct a filter which removes these lines.
 <<functions>>=
 clean() {
-  local file="$1"
+  local file=$(file_or_stdin "$1")
   grep -vE "^(${IGNORE_HEADERS})" "$file"
 }
 <<variables>>=
@@ -325,21 +350,23 @@ Since this might output several lines, we'll make a disjunct regex.
 We'll do this with [[make_disjunct_regex]] discussed below.
 <<functions>>=
 course() {
-  local file="$1"
+  local file=$(file_or_stdin "$1")
   (course_code "$file"; course_nick "$file") \
-    | make_disjunct_regex
+  | make_disjunct_regex
 }
+
 course_code() {
-  local file="$1"
+  local file=$(file_or_stdin "$1")
   clean "$file" \
-    | grep -Eo "${COURSE_CODE}" \
-    | sort -u
+  | grep -Eo "${COURSE_CODE}" \
+  | sort -u
 }
+
 course_nick() {
-  local file="$1"
+  local file=$(file_or_stdin "$1")
   clean "$file" \
-    | grep -Eo "${COURSE_NICK}" \
-    | sort -u
+  | grep -Eo "${COURSE_NICK}" \
+  | sort -u
 }
 <<variables>>=
 COURSE_CODE="[A-Z]{2,3}[0-9]{3,4}[A-Z]?"
@@ -415,7 +442,7 @@ We also note that we must not match the course code, since those also fit the
 pattern in [[ASSIGNMENT_GROUP]].
 <<functions>>=
 assignment_groups() {
-  local file="$1"
+  local file=$(file_or_stdin "$1")
   local groups=$(clean "$file" \
                   | grep -Eo "${ASSIGNMENT_GROUP}" \
                   | grep -Ev "${COURSE_CODE}" \
@@ -471,7 +498,7 @@ The approach will be similar to that of [[assignment_groups]], but we'll have
 to grep for known assignment names.
 <<functions>>=
 assignments() {
-  local file="$1"
+  local file=$(file_or_stdin "$1")
   local assns=$(clean "$file" \
                 | grep -iEo "${ASSIGNMENT}" \
                 | sort -u)
@@ -529,16 +556,27 @@ in one place.
 Now, the functions should be possible to use individually, but we don't want 
 the same variables several times.
 This gives us the following construction.
-<<construct [[ladok]] command from email>>=
-<<output variables if not already done>>
-<<construct [[canvaslms]] command from email>>=
-<<output variables if not already done>>
-<<construct restlabb command from email>>=
-<<output variables if not already done>>
-<<construct missing command from email>>=
-<<output variables if not already done>>
-<<construct report command from email>>=
-<<output variables if not already done>>
+<<functions>>=
+ladok() {
+  <<output variables if not already done>>
+  <<construct [[ladok]] command from email>>
+}
+canvas() {
+  <<output variables if not already done>>
+  <<construct [[canvaslms]] command from email>>
+}
+restlabb() {
+  <<output variables if not already done>>
+  <<construct restlabb command from email>>
+}
+missing() {
+  <<output variables if not already done>>
+  <<construct missing command from email>>
+}
+report() {
+  <<output variables if not already done>>
+  <<construct report command from email>>
+}
 @
 
 
@@ -625,7 +663,7 @@ echo '| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//"'
 We only want to output the variables if they haven't already been output.
 To achieve this we'll use a flag variable.
 <<output variables if not already done>>=
-local file="$1"
+local file=$(file_or_stdin "$1")
 if [[ -z "$VARS_ALREADY_OUTPUT" ]]; then
   VARS_ALREADY_OUTPUT=1
   echo "COURSE=\"$(course $file)\""
