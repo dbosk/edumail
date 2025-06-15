@@ -44,7 +44,13 @@ We'll use a simple construction to achieve this.
 
 \subsection{Structural overview}
 
-We use the standard structure for the script.
+We'll start with a [[<<edumail.sh>>]] script that contains the main function.
+This function will parse the first argument as the subcommand to call.
+Then it will call that subcommand function with the rest of the arguments.
+
+We'll execute the [[main]] function if the script is not sourced.
+This way, we can source the script and use the functions directly in the 
+current shell.
 <<edumail.sh>>=
 #!/bin/bash
 # This file is generated from edumail.nw.
@@ -52,7 +58,13 @@ We use the standard structure for the script.
 <<variables>>
 <<functions>>
 
-<<parse which subcommand should be called and call its function>>
+main() {
+  <<parse which subcommand should be called and call its function>>
+}
+
+# call main if not sourced
+# https://stackoverflow.com/a/28776166/1305099
+(return 0 2>/dev/null) || main "$@"
 @
 
 \subsection{Invoke right subcommand function}
@@ -61,11 +73,26 @@ The first argument ([[$1]]) should be the subcommand.
 This should be the same as the name of its function.
 This way we can simply shift the arguments and call that function,
 then it can parse the rest of the arguments as it sees fit.
+However, an easier way in this case is to simply evaluate [["$@"]],
+this would have the same effect as shifting the arguments and calling the 
+function.
+
+If no subcommand is given, we print a usage message.
+This should include a list of all subcommands.
 <<parse which subcommand should be called and call its function>>=
-cmd="$1"
-shift
-$cmd "$@"
+[[ "$1" = "" ]] \
+  && <<echo help text>> \
+  || "$@"
+<<echo help text>>=
+echo -e "Usage: $0 [function] args\nFunctions:\n<<list all functions>>"
 @
+
+To get a list of all the functions, we simply grep them out of the script 
+itself, given by [[$0]].
+<<list all functions>>=
+$(sed -En 's/^(\w+)\(\) \{/  \1/p' $0 | grep -Pv '^\s*main$')
+@
+
 
 \section{The results subcommands}
 
