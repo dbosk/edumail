@@ -665,7 +665,7 @@ echo 'canvaslms results \'
 echo '  -c "${COURSE}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
 echo '  -u "${STUDENT}" \'
-echo '  -M -F "([A-EP]|complete|[0-9.]+%?)" \
+echo '  -M -F "([A-EP]|complete|[0-9.]+%?)" \'
 echo '     -O "^Optional:"'
 @
 
