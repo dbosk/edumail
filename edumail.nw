@@ -170,9 +170,13 @@ results() {
   local file=$(file_or_stdin "$1")
   shift
   ladok "$file" "$@"
+  echo "echo"
   canvas "$file" "$@"
+  echo "echo"
   restlabb "$file" "$@"
+  echo "echo"
   missing "$file" "$@"
+  echo "echo"
   report "$file" "$@"
 }
 @
