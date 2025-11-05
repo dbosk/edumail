@@ -620,13 +620,17 @@ echo '      | cut -f 3 | uniq)'
 For the [[canvaslms]] command we can do some output modification to make it 
 useful.
 We usually don't need all columns in its output.
+We want the first, to see which year the submission belongs to.
+Then the second column, the assignment itself.
+We don't need the third column, which is the student name or email.
+Finally, we want all columns from the fourth and onwards: grades and dates.
 <<construct [[canvaslms]] command from email>>=
 echo 'canvaslms submissions \'
 echo '  -c "${COURSE}" \'
 echo '  -a "${ASSIGN}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
 echo '  -u "${STUDENT}" \'
-echo '  | cut -f 2,4-'
+echo '  | cut -f 1-2,4-'
 @
 
 \subsection{Generate the restlabb command}
