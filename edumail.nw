@@ -608,11 +608,15 @@ The [[ladok]] command is quite straight forward.
 However, we need the course code for LADOK, not any identifier.
 Then we can get the student identifier from Canvas.
 Note that if the student is in several courses and the regex [[COURSE]] match, 
-then we need to filter it down to one.
+then we need to filter it down to one ([[uniq]]).
+Also, if the regex matches several students, we need to loop over them all.
 <<construct [[ladok]] command from email>>=
-echo 'ladok student -c "${COURSE_CODE}" -r \'
-echo '  $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l \'
-echo '      | cut -f 3 | uniq)'
+echo 'for student_id in $(canvaslms users -sc "${COURSE}" "${STUDENT}" -l \'
+echo '                    | cut -f 3 | uniq)'
+echo 'do'
+echo '  ladok student -c "${COURSE_CODE}" -r "${student_id}"'
+echo '  echo'
+echo 'done'
 @
 
 \subsection{Generate the [[canvaslms]] command}
