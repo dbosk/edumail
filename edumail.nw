@@ -677,6 +677,7 @@ echo 'canvaslms results \'
 echo '  -c "${COURSE}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
 echo '  -u "${STUDENT}" \'
+echo '  -S canvaslms.grades.conjunctavgsurvey \'
 echo '  -M -F "([A-EP]|complete|[0-9.]+%?)" \'
 echo '     -O "^Optional:"'
 @
@@ -690,6 +691,7 @@ echo 'canvaslms results \'
 echo '  -c "${COURSE}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
 echo '  -u "${STUDENT}" \'
+echo '  -S canvaslms.grades.conjunctavgsurvey \'
 echo '| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//"'
 @ This output, in turn, can be piped to the [[ladok report -fv]] command.
 
