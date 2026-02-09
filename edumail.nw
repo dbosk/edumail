@@ -666,7 +666,7 @@ RESTLABB_FORMS=$(kthutils config forms.added_forms \
 
 \subsection{Generate the missing command}
 
-We can use the [[canvaslms results -M]] command to output any missing 
+We can use the [[canvaslms results --missing]] command to output any missing 
 assignments.
 We want to change the default regex for passing grades ([[-F]]) to include the 
 numbers too (for the mandatory surveys).
@@ -678,8 +678,8 @@ echo '  -c "${COURSE}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
 echo '  -u "${STUDENT}" \'
 echo '  -S canvaslms.grades.conjunctavgsurvey \'
-echo '  -M -F "([A-EP]|complete|[0-9.]+%?)" \'
-echo '     -O "^Optional:"'
+echo '  --missing -F "([A-EP]|complete|[0-9.]+%?)" \'
+echo '            -O "^Optional:"'
 @
 
 
