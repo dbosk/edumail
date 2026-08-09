@@ -171,11 +171,11 @@ results() {
   shift
   ladok "$file" "$@"
   echo "echo"
-  canvas "$file" "$@"
+  missing "$file" "$@"
   echo "echo"
   restlabb "$file" "$@"
   echo "echo"
-  missing "$file" "$@"
+  canvas "$file" "$@"
   echo "echo"
   report "$file" "$@"
 }
