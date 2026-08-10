@@ -663,22 +663,36 @@ can quickly report any missing results if needed.
 Sometimes we miss a result because there are two results for the same student 
 and same assignment in the same run.
 We do this for all forms that we're interested in.
+
+For the rewriting, some forms use different formats and, thus, require 
+different rewriters.
+So we separate them into different groups.
 <<construct restlabb command from email>>=
 echo "RESTLABB_FORMS='${RESTLABB_FORMS}'"
 echo '(for form in ${RESTLABB_FORMS}; do kthutils forms export ${form}; done) \'
 echo '  | grep "${STUDENT}" \'
-echo '  | kthutils forms rewriter rewrite restlabb # cut -f 1,2,4,6,7'
+echo '  | kthutils forms rewriter rewrite restlabb'
 @ Note that we inverse the quotes on the first line above, that's because we 
 want to expand the variable [[RESTLABB_FORMS]] to include its value in the 
 output.
-@
+
 Let's define the variables we need for handling restlabb.
 We can simply look through all the forms that we have.
 At least those that match \enquote{restlabb} and \enquote{labweek}.
 <<variables>>=
-RESTLABB_FORMS=$(kthutils config forms.added_forms \
-                 | grep -iE "(restlabb|labweek)" \
-                 | sed -En "s/^forms\.added_forms\.(.*) = .*$/\1/p")
+RESTLABB_FORMS=$(kthutils forms ls \
+                 | grep -iE "restlabb2[5-9]/2[6-9]")
+@
+
+Now we do the same, but for the LabWeek forms.
+<<variables>>=
+LABWEEK_FORMS=$(kthutils forms ls \
+                | grep -iE "labweek202[6-9]")
+<<construct restlabb command from email>>=
+echo "LABWEEK_FORMS='${LABWEEK_FORMS}'"
+echo '(for form in ${LABWEEK_FORMS}; do kthutils forms export ${form}; done) \'
+echo '  | grep "${STUDENT}" \'
+echo '  | kthutils forms rewriter rewrite labweek'
 @
 
 
