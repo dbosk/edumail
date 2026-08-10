@@ -518,6 +518,7 @@ no assignment groups).
 
 The approach will be similar to that of [[assignment_groups]], but we'll have 
 to grep for known assignment names.
+However, if we don't find any, we won't output a default regex.
 <<functions>>=
 assignments() {
   local file=$(file_or_stdin "$1")
@@ -526,8 +527,6 @@ assignments() {
                 | sort -u)
   if [[ -n "$assns" ]]; then
     echo "$assns"
-  else
-    echo "^${ASSIGNMENT}"
   fi | make_disjunct_regex
 }
 @
@@ -623,19 +622,38 @@ echo 'done'
 
 For the [[canvaslms]] command we can do some output modification to make it 
 useful.
+<<construct [[canvaslms]] command from email>>=
+echo 'canvaslms submissions \'
+echo '  -c "${COURSE}" \'
+echo '  -u "${STUDENT}" \'
+<<specify assignment or assignment groups if they exist>>
+<<cut the output to only include the relevant columns>>
+@
+
 We usually don't need all columns in its output.
 We want the first, to see which year the submission belongs to.
 Then the second column, the assignment itself.
 We don't need the third column, which is the student name or email.
 Finally, we want all columns from the fourth and onwards: grades and dates.
-<<construct [[canvaslms]] command from email>>=
-echo 'canvaslms submissions \'
-echo '  -c "${COURSE}" \'
-echo '  -a "${ASSIGN}" \'
-echo '  -A "${ASSIGN_GRPS}" \'
-echo '  -u "${STUDENT}" \'
+<<cut the output to only include the relevant columns>>=
 echo '  | cut -f 1-2,4-'
 @
+
+We can't specify assignment and assignment group at the same time.
+They are mutually exclusive.
+We can make it choose the one that is not empty.
+
+These optional-argument lines need single quotes \emph{in the generated
+text}, so they use the [['\'']] idiom (close the string, emit an
+escaped quote, reopen); a bare [[\']] inside single quotes does not
+escape anything---it closes the string and unbalances the quoting for
+the rest of the script.
+<<specify assignment or assignment groups if they exist>>=
+echo '  $([[ -n "${ASSIGN}" ]] && echo "-a '\''${ASSIGN}'\''") \'
+echo '  $([[ -n "${ASSIGN_GRPS}" ]] && echo "-A '\''${ASSIGN_GRPS}'\''") \'
+@ This was also the reason for which we didn't want to have a default regex for 
+the assignments, since that would always be non-empty and thus always be used.
+
 
 \subsection{Generate the restlabb command}
 
