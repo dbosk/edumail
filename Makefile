@@ -7,7 +7,7 @@ edumail.pdf: edumail.tex didactic.sty
 edumail.pdf: abstract.tex
 edumail.pdf: edumail
 
-edumail.tex: edumail.nw
+edumail.tex: edumail.nw noweb_lexer.py
 
 
 .PHONY:

@@ -51,7 +51,7 @@ Then it will call that subcommand function with the rest of the arguments.
 We'll execute the [[main]] function if the script is not sourced.
 This way, we can source the script and use the functions directly in the 
 current shell.
-<<edumail.sh>>=
+<<[[edumail.sh]]>>=
 #!/bin/bash
 # This file is generated from edumail.nw.
 
