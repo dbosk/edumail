@@ -299,7 +299,7 @@ include the headers.
 any_email() {
   local file=$(file_or_stdin "$1")
   local email
-  email=$(grep -Eo "${USER_FORMAT}@${DOMAIN}" "$file" | head -n 1)
+  email=$(grep -Po "${USER_FORMAT}@${DOMAIN}" "$file" | head -n 1)
   if [[ -n "$email" ]]; then
     echo "$email"
     return 0
@@ -366,33 +366,99 @@ IGNORE_HEADERS="${IGNORE_HEADERS}|On .* wrote:$"
 
 This leaves us with the following construction.
 We first match for course codes, then for course nick names.
-Since these may occur several times in the email, we'll sort them and remove 
-duplicates.
-Since this might output several lines, we'll make a disjunct regex.
-We'll do this with [[make_disjunct_regex]] discussed below.
+Finally, we also try to guess the course based on keywords in the email.
+
+Since any matches may occur several times in the email, we'll sort them and 
+remove duplicates.
+And to deal with output containing several lines, we'll make a disjunct regex 
+with [[make_disjunct_regex]] discussed below.
 <<functions>>=
 course() {
   local file=$(file_or_stdin "$1")
   (course_code "$file"; course_nick "$file") \
+  | sort -u \
   | make_disjunct_regex
 }
 
 course_code() {
   local file=$(file_or_stdin "$1")
-  clean "$file" \
-  | grep -Eo "${COURSE_CODE}" \
-  | sort -u
+  (
+    clean "$file" \
+    | grep -Po "${COURSE_CODE}"
+    if <<test for programming terms>>; then
+      echo "DD131[07]"
+    fi
+    if <<test for crypto terms>>; then
+      echo "DD2520"
+    fi
+    if <<test for science terms>>; then
+      echo "DA2215"
+    fi
+  ) | sort -u \
+    | make_disjunct_regex
 }
 
 course_nick() {
   local file=$(file_or_stdin "$1")
-  clean "$file" \
-  | grep -Eo "${COURSE_NICK}" \
-  | sort -u
+  (
+    clean "$file" \
+    | grep -Po "${COURSE_NICK}"
+    if <<test for programming terms>>; then
+      echo "prg[im]${YEARS_REGEX}"
+    fi
+    if <<test for crypto terms>>; then
+      echo "tilkry${YEARS_REGEX}"
+    fi
+    if <<test for science terms>>; then
+      echo "vetcyb${YEARS_REGEX}"
+    fi
+  ) | sort -u \
+    | make_disjunct_regex
 }
+@
+
+For the patterns, the important part is to do a lookahead to see that we don't 
+match substrings of other data.
+For instance, students usually write the course code with lower case and that 
+can be mistaken for a course nick name.
+So we want a lookahead to ensure we get space or punctuation after the course 
+code.
 <<variables>>=
-COURSE_CODE="[A-Z]{2,3}[0-9]{3,4}[A-Z]?"
-COURSE_NICK="[a-z]+[0-9]{2}"
+COURSE_CODE="[A-Za-z]{2,3}[0-9]{3,4}[A-Za-z]?(?![A-Za-z0-9])"
+COURSE_NICK="[a-z]+[0-9]{2}(?![A-Za-z0-9])"
+@ Note that we need the [[-P]] option for that lookahead in the regex to work.
+
+We then need the year so that we can match the course nick name with the last 
+few years when the student gives only the course but not the year they took it.
+<<variables>>=
+YEAR=$(date +%y)
+YEARS_REGEX="($((YEAR-2))|$((YEAR-1))|$YEAR)"
+@
+
+A lot of the time, the students don't include the course code or nick name in 
+the email.
+So we have to guess what course it is based on the content of the email.
+For the programming course, there are a few things to look for.
+Firstly, everything is in Swedish.
+Secondly, we look for common terms for the course (programming, Python) and 
+then the unique terms for assignments (\enquote{datorprov} rather than 
+\enquote{labbar}, the latter being too generic).
+<<test for programming terms>>=
+   <<look for>> "programm?ering|python|DD131[07]" \
+|| <<look for>> "datorprov|projekt|p-uppgift|redovis|gransk|spec" \
+|| <<look for>> "labb [1-6]|Excel"
+<<test for crypto terms>>=
+   <<look for>> "[kc]rypto|DD2520" \
+|| <<look for>> "ciphertext|plaintext|breaking|[ck]rypo?tanalys" \
+|| <<look for>> "ProVerif|usability"
+<<test for science terms>>=
+<<look for>> "DA2215|TAMOS|scien|project|seminar"
+@
+
+We want the [[grep]] to be quiet and case insensitive.
+We also want to use the Perl style regex syntax.
+<<look for>>=
+clean "$file" | grep -qiP
 @
 
 To make a disjunct regex, we simply concatenate the lines with a pipe.
@@ -466,8 +532,8 @@ pattern in [[ASSIGNMENT_GROUP]].
 assignment_groups() {
   local file=$(file_or_stdin "$1")
   local groups=$(clean "$file" \
-                  | grep -Eo "${ASSIGNMENT_GROUP}" \
-                  | grep -Ev "${COURSE_CODE}" \
+                  | grep -Po "${ASSIGNMENT_GROUP}" \
+                  | grep -Pv "${COURSE_CODE}" \
                   | sort -u)
   if [[ -n "$groups" ]]; then
     echo "$groups"
@@ -643,16 +709,14 @@ We can't specify assignment and assignment group at the same time.
 They are mutually exclusive.
 We can make it choose the one that is not empty.
 
-These optional-argument lines need single quotes \emph{in the generated
-text}, so they use the [['\'']] idiom (close the string, emit an
-escaped quote, reopen); a bare [[\']] inside single quotes does not
-escape anything---it closes the string and unbalances the quoting for
-the rest of the script.
+We could make them print conditionally.
+But that turned out to be rather difficult.
+A better idea is to make [[-a]] and [[-A]] not mutually exclusive in 
+[[canvaslms]].
 <<specify assignment or assignment groups if they exist>>=
-echo '  $([[ -n "${ASSIGN}" ]] && echo "-a '\''${ASSIGN}'\''") \'
-echo '  $([[ -n "${ASSIGN_GRPS}" ]] && echo "-A '\''${ASSIGN_GRPS}'\''") \'
-@ This was also the reason for which we didn't want to have a default regex for 
-the assignments, since that would always be non-empty and thus always be used.
+echo '  -a "${ASSIGN}" \'
+echo '  -A "${ASSIGN_GRPS}" \'
+@
 
 
 \subsection{Generate the restlabb command}
@@ -670,6 +734,7 @@ So we separate them into different groups.
 <<construct restlabb command from email>>=
 echo "RESTLABB_FORMS='${RESTLABB_FORMS}'"
 echo '(for form in ${RESTLABB_FORMS}; do kthutils forms export ${form}; done) \'
+echo '  | <<resort chronologically>> \'
 echo '  | grep "${STUDENT}" \'
 echo '  | kthutils forms rewriter rewrite restlabb'
 @ Note that we inverse the quotes on the first line above, that's because we 
@@ -691,8 +756,23 @@ LABWEEK_FORMS=$(kthutils forms ls \
 <<construct restlabb command from email>>=
 echo "LABWEEK_FORMS='${LABWEEK_FORMS}'"
 echo '(for form in ${LABWEEK_FORMS}; do kthutils forms export ${form}; done) \'
+echo '  | <<resort chronologically>> \'
 echo '  | grep "${STUDENT}" \'
 echo '  | kthutils forms rewriter rewrite labweek'
+@
+
+In both cases, the newest entry is first.
+Since sometimes a student may present and fail before finally passing, it's 
+good to have the entries in chronological order.
+This way we report the results in that order, consequently the final pass will 
+overwrite the previous fail.
+We can do this by sorting the output:
+The first key is the date and time, in ISO format, so it sorts 
+lexicographically.
+As we get it from the forms export, it's sorted newest to oldest;
+so we just need to sort it.
+<<resort chronologically>>=
+sort
 @
 
 
@@ -724,8 +804,20 @@ echo '  -c "${COURSE}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
 echo '  -u "${STUDENT}" \'
 echo '  -S canvaslms.grades.conjunctavgsurvey \'
-echo '| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//"'
-@ This output, in turn, can be piped to the [[ladok report -fv]] command.
+@ We also want to rewrite the first column: the course code.
+This is because we want to pipe the data to the [[ladok -v report -f]] command.
+Usually the one in Canvas contains other data as well, like the semester.
+We want to remove that and keep only the course code.
+<<construct report command from email>>=
+echo '| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \'
+@ Normally, that works.
+However, sometimes it doesn't.
+Some courses deviate, maybe due to being a manual merge of several course rooms 
+in Canvas.
+So we add the following backup:
+<<construct report command from email>>=
+echo '| awk -F "\t" -v OFS="\t" -v code=$COURSE_CODE "{\$1=code; print}"'
+@
 
 \subsection{Outputting the variables}
 
@@ -735,7 +827,7 @@ To achieve this we'll use a flag variable.
 local file=$(file_or_stdin "$1")
 if [[ -z "$VARS_ALREADY_OUTPUT" ]]; then
   VARS_ALREADY_OUTPUT=1
-  echo "COURSE=\"$(course $file)\""
+  echo "COURSE=\"$(course_nick $file)\""
   echo "COURSE_CODE=\"$(course_code $file)\""
   echo "ASSIGN=\"$(assignments $file)\""
   echo "ASSIGN_GRPS=\"$(assignment_groups $file)\""
