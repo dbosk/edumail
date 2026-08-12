@@ -13,7 +13,7 @@
 %\let\institute\affil
 
 \title{%
-  Mail utilities for education
+  Mail utilities for processing emails
 }
 \author{%
   Daniel Bosk
@@ -35,25 +35,74 @@
 \tableofcontents
 \clearpage
 
+\begin{pycode}
+import subprocess
+
+def print_verbatim(output):
+    print(r"\begin{verbatim}")
+    if isinstance(output, bytes):
+      output = output.decode()
+    print(output)
+    print(r"\end{verbatim}")
+\end{pycode}
+
 @
 \section{Introduction}
 
-This is the documentation of the [[<<edumail.sh>>]] bash script.
+% What's the problem?
+We receive emails from students asking why they haven't gotten their grades 
+reported yet.
+% Why is it a problem? Research gap left by other approaches?
+Since all grades are reported automatically, this means that there is something 
+they haven't completed.
+% Why is it important? Why care?
+We still have to answer these emails, which takes time.
+So we want to reduce the time it takes to answer these emails.
+
+% What's the approach? How to solve the problem?
+Our approach is to write utilities that parse the email and generate the needed 
+commands to find the students results.
+We need to look these up to answer the question and it's good to send these to 
+the student so that they see.
+% What's the findings? How was it evaluated, what are the results, limitations, 
+% what remains to be done?
+
+In this era, a first thought might be that this would require the use of an LLM 
+to read the email and generate the commands to fetch the results.
+(Or that the LLM simply calls those commands directly.)
+That would be a complete waste of energy since we can do something that is more 
+efficient and more deterministic (more sustainable and less error prone).
+
+This is the literate source code of the [[<<[[edumail.sh]]>>]] bash script.
 The idea is that it's a command that works like Git with different subcommands.
+Then we simply call it when we are processing a student email.
 We'll use a simple construction to achieve this.
 
 \subsection{Structural overview}
 
-We'll start with a [[<<edumail.sh>>]] script that contains the main function.
+We'll start with a [[<<[[edumail.sh]]>>]] script that contains the main 
+function.
 This function will parse the first argument as the subcommand to call.
 Then it will call that subcommand function with the rest of the arguments.
+\begin{minted}{bash}
+edumail results email.txt
+\end{minted}
+This calls the [[results]] function with the argument [[email.txt]].
 
-We'll execute the [[main]] function if the script is not sourced.
+We'll execute the [[main]] function if the script is not sourced\footnote{%
+  Sourced: included in another script as a library.%
+}.
 This way, we can source the script and use the functions directly in the 
 current shell.
+So instead of \mintinline{bash}{edumail results email.txt}, we can do
+\begin{minted}{bash}
+source edumail.sh
+results email.txt
+\end{minted}
+
+We'll use a rather standard structure for the script.
 <<[[edumail.sh]]>>=
 #!/bin/bash
-# This file is generated from edumail.nw.
 
 <<variables>>
 <<functions>>
@@ -79,6 +128,18 @@ function.
 
 If no subcommand is given, we print a usage message.
 This should include a list of all subcommands.
+It should look like this:
+\begin{pycode}
+output = subprocess.run(["./edumail", ""], capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+
+For this we use a trick of using the side effects of boolean operators:
+[[bash]] only evaluates what is needed---for an \enquote{and} operator 
+([[&&]]) we don't evaluate the second if the first is false (can't get two true 
+values if the first is false), for the \enquote{or} operator ([[||]]) we don't 
+evaluate the second if the first is true (we already have a true value, so the 
+second can't change the outcome).
 <<parse which subcommand should be called and call its function>>=
 [[ "$1" = "" ]] \
   && <<echo help text>> \
@@ -89,17 +150,18 @@ echo -e "Usage: $0 [function] args\nFunctions:\n<<list all functions>>"
 
 To get a list of all the functions, we simply grep them out of the script 
 itself, given by [[$0]].
+We skip the [[main]] function, since that one it not interesting.
 <<list all functions>>=
-$(sed -En 's/^(\w+)\(\) \{/  \1/p' $0 | grep -Pv '^\s*main$')
+$(sed -En 's/^(\w+)\(\) \{/  \1/p' $0 \
+  | grep -Pv '^\s*main$')
 @
-
 
 \section{The results subcommands}
 
 We want a set of subcommands that can be used to get a student's results from 
 the course in question.
-It will not get the student's actual results, but rather return lines that can 
-fetch the results.
+It will not get the student's actual results, but rather return command lines 
+that can fetch the results.
 
 \begin{example}\label{email1}
 An email from a student\footnote{%
@@ -109,7 +171,7 @@ An email from a student\footnote{%
 } may look like the following.
 The lines that are marked contain useful data.
 \inputminted[highlightlines={2,5,11-12,14}]{text}{email1.txt}
-This email should then yield the following output:
+This email should then yield something like the following output:
 \begin{minted}{bash}
 ladok student -c DD1317 -r \
   $(canvaslms users -sc DD1317 "Studenten Studentensson" -l | cut -f 3)
@@ -135,25 +197,32 @@ kthutils forms export restlabb23/24 \
 \end{minted}
 \end{example}
 
-We'll use this from Vim when we write the reply.
-We should be able to pass a filename as argument.
-That file should contain the email as shown in the examples above.
-And it should generate the output as shown in the examples above to stdout.
-The idea is then that we do
+Why do we want it to output those commands and not the results directly?
+We use [[mutt]] for reading and replying to emails.
+The [[mutt]] email client uses the user's favourite editor to write the 
+reply---Vim.
+The idea is then that when we're writing the reply in Vim, we do
 \begin{quote}
   [[.!edumail.sh results %]]
 \end{quote}
-on a blank line to get the output.
-Then we can do
+on a blank line to replace the blank line with the output (the commands).
+(The [[%]] is a Vim placeholder for the current file, which is the email.)
+Then we can select the relevant lines and execute them in the shell:
 \begin{quote}
   [['<,'>!bash]]
 \end{quote}
-to select the relevant lines of the output to execute.
+If needed, we can edit the lines first---this is why we want the command lines 
+and not the results directly.
+
+So, we should be able to pass a filename as argument (so that we can pass 
+[[%]]).
+That file should contain the email as shown in the examples above.
+And it should generate the output as shown in the examples above to stdout.
 
 We'll add a subcommand for each of the lines in the output above.
 One that focuses on the [[ladok]] command, one on [[canvaslms]] and the last on 
 restlabb.
-Then we'll let the [[results]] subcommand call these subcommands.
+Then we'll let the [[results]] subcommand call all of these subcommands.
 
 Tools like [[grep]] and [[sed]] are very useful because they either take a file 
 as input or read from stdin.
@@ -164,7 +233,7 @@ The subcommand functions will usually be quite straight forward in considering
 this, but for the [[results]] subcommand we need each subcommand called to get 
 the same input.
 So we must ensure that each of the commands can read stdin, which we do with 
-the function~[[file_or_stdin]].
+the function~[[file_or_stdin]] (we'll get back to it later).
 <<functions>>=
 results() {
   local file=$(file_or_stdin "$1")
@@ -181,7 +250,7 @@ results() {
 }
 @
 
-This function [[ladok]] will hide the [[ladok]] command from us, so that we 
+The function [[ladok]] will hide the [[ladok]] command from us, so that we 
 can't use it.
 However, this won't be an issue since we don't need to invoke it in this 
 script.
@@ -195,7 +264,7 @@ It's just that they try to get different data out of it.
 
 The most efficient approach would be to parse the email only once.
 During that round we extract all the data we need.
-Then each out the functions can use that data to construct the output.
+Then each of the functions can use that data to construct the output.
 
 However, considering that we might call the subcommands directly, each 
 subcommand must ensure the email has been parsed.
@@ -312,13 +381,6 @@ any_email() {
 Let's test this on the emails from the examples above.
 Running [[student]] on \cref{email1} should yield the following output:
 \begin{pycode}
-import subprocess
-
-def print_verbatim(output):
-    print(r"\begin{verbatim}")
-    print(output)
-    print(r"\end{verbatim}")
-
 output = subprocess.run(["./edumail", "student", "email1.txt"],
                         capture_output=True)
 print_verbatim(output.stdout)
@@ -367,6 +429,19 @@ IGNORE_HEADERS="${IGNORE_HEADERS}|On .* wrote:$"
 This leaves us with the following construction.
 We first match for course codes, then for course nick names.
 Finally, we also try to guess the course based on keywords in the email.
+Let's look at the example emails again.
+\Cref{email1} should yield something like
+\begin{pycode}
+output = subprocess.run(["./edumail", "course", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+\Cref{email2} should yield something like
+\begin{pycode}
+output = subprocess.run(["./edumail", "course", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
 
 Since any matches may occur several times in the email, we'll sort them and 
 remove duplicates.
@@ -375,11 +450,23 @@ with [[make_disjunct_regex]] discussed below.
 <<functions>>=
 course() {
   local file=$(file_or_stdin "$1")
-  (course_code "$file"; course_nick "$file") \
+  (course_code "$file"; echo; course_nick "$file") \
   | sort -u \
   | make_disjunct_regex
 }
+@ This function output what we just saw above.
+The [[course]] function calls [[course_code]] and [[course_nick]] to extract 
+the course code and course nick name, respectively.
+Their outputs are just concatenated.
 
+The [[course_code]] function will look for the course code in the email.
+If it finds something that looks like a course code, it will return it 
+(printing it to stdout).
+Then it will look for keywords in the email that indicate which course it is, 
+then output the course code for that course.
+Since many might match, we sort the output and remove duplicates.
+Finally, we make a disjunct regex from the output.
+<<functions>>=
 course_code() {
   local file=$(file_or_stdin "$1")
   (
@@ -397,7 +484,23 @@ course_code() {
   ) | sort -u \
     | make_disjunct_regex
 }
+@ If we run this function on the examples we get the following.
+\Cref{email1} yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "course_code", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+\Cref{email2} yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "course_code", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
 
+The [[course_nick]] function will do exactly the same, but look for the course 
+nick name in the email and output a nickname instead.
+<<functions>>=
 course_nick() {
   local file=$(file_or_stdin "$1")
   (
@@ -415,7 +518,19 @@ course_nick() {
   ) | sort -u \
     | make_disjunct_regex
 }
-@
+@ Running the [[course_nick]] function on the examples yields the following.
+\Cref{email1} yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "course_nick", "email1.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+\Cref{email2} yields the following output:
+\begin{pycode}
+output = subprocess.run(["./edumail", "course_nick", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
 
 For the patterns, the important part is to do a lookahead to see that we don't 
 match substrings of other data.
@@ -426,10 +541,15 @@ code.
 <<variables>>=
 COURSE_CODE="[A-Za-z]{2,3}[0-9]{3,4}[A-Za-z]?(?![A-Za-z0-9])"
 COURSE_NICK="[a-z]+[0-9]{2}(?![A-Za-z0-9])"
-@ Note that we need the [[-P]] option for that lookahead in the regex to work.
+@ Note that we need the [[-P]] option for that lookahead in the regex to work 
+with [[grep]].
 
-We then need the year so that we can match the course nick name with the last 
-few years when the student gives only the course but not the year they took it.
+Usually the students omit the year they took the course, particularly if they 
+took it the last one or two year.
+(Those from many years ago tend to write when they took it.)
+We need the year so that we can match the course nick name with the last few 
+years (instead of all throughout time) when the student gives only the course 
+but not the year they took it.
 <<variables>>=
 YEAR=$(date +%y)
 YEARS_REGEX="($((YEAR-2))|$((YEAR-1))|$YEAR)"
@@ -443,6 +563,9 @@ Firstly, everything is in Swedish.
 Secondly, we look for common terms for the course (programming, Python) and 
 then the unique terms for assignments (\enquote{datorprov} rather than 
 \enquote{labbar}, the latter being too generic).
+The crypto and science courses are for fourth and fifth year students, so they 
+are in English---although Swedish students sometimes write their emails in 
+Swedish if they have figured out that I'm fluent in Swedish.
 <<test for programming terms>>=
    <<look for>> "programm?ering|python|DD131[07]" \
 || <<look for>> "datorprov|projekt|p-uppgift|redovis|gransk|spec" \
@@ -456,14 +579,19 @@ then the unique terms for assignments (\enquote{datorprov} rather than
 @
 
 We want the [[grep]] to be quiet and case insensitive.
-We also want to use the Perl style regex syntax.
+We also want to use the Perl style regex syntax ([[-P]]), as mentioned above.
+We'll need to clean the email from irrelevant headers before we look for the 
+keywords.
 <<look for>>=
 clean "$file" | grep -qiP
 @
 
-To make a disjunct regex, we simply concatenate the lines with a pipe.
-We must also make sure to not end with a pipe.
-That is, turning
+\subsection{Creating a disjunct regex}
+
+To make a disjunct regex, we simply concatenate the lines with a pipe (a sign 
+for \enquote{or} in regex).
+\begin{example}\label{disjunct-regex-example}
+We want to turn
 \begin{minted}{text}
 DD1317
 prgi23
@@ -472,13 +600,19 @@ into
 \begin{minted}{text}
 (DD1317|prgi23)
 \end{minted}
+\end{example}
+There are two special cases to consider:
+We must make sure to not end with a pipe.
+And if there is a blank line, we'll get two pipes in a row, which we also want 
+to avoid.
+So we simply remove these two cases when they occur.
 <<functions>>=
 make_disjunct_regex() {
   echo -n "("
-  tr '\n' '|' | sed 's/|$//'
+  tr '\n' '|' | sed 's/||/|/g' | sed 's/|$//'
   echo -n ")"
 }
-@ Let's test this on the example above.
+@ Let's test this on \cref{disjunct-regex-example} above.
 \begin{pycode}
 output = subprocess.run(
   "(echo DD1317; echo prgi23) | ./edumail make_disjunct_regex",
@@ -488,12 +622,20 @@ print_verbatim(output.stdout)
 
 If we run this on the emails from the examples above, we should get the 
 following output.
-Running [[course]] on \cref{email1} should yield the following output:
+Running [[course]] on \cref{email1} yields the following output:
 \begin{pycode}
 output = subprocess.run(["./edumail", "course", "email1.txt"],
                         capture_output=True)
 print_verbatim(output.stdout)
 \end{pycode}
+This is correct.
+The student gave the course code, but not which course round.
+The student also named some keywords for the programming courses.
+(The years in the regex are calculated from the current year, when we compile 
+this document, but the email examples are older than that---from when I wrote 
+the first version of this script.
+But as long as I read the student's email within a year or two, the regex will 
+likely match the course round.)
 
 Running [[course]] on \cref{email2} should yield the following output:
 \begin{pycode}
@@ -573,6 +715,13 @@ output = subprocess.run(["./edumail", "assignment_groups", "email1.txt"],
                         capture_output=True)
 print_verbatim(output.stdout)
 \end{pycode}
+And \cref{email2}:
+\begin{pycode}
+output = subprocess.run(["./edumail", "assignment_groups", "email2.txt"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+So it's important with a good default.
 
 \subsection{Assignments}
 
@@ -654,18 +803,30 @@ canvas() {
 }
 restlabb() {
   <<output variables if not already done>>
-  <<construct restlabb command from email>>
+  <<construct [[restlabb]] command from email>>
 }
 missing() {
   <<output variables if not already done>>
-  <<construct missing command from email>>
+  <<construct [[missing]] command from email>>
 }
 report() {
   <<output variables if not already done>>
-  <<construct report command from email>>
+  <<construct [[report]] command from email>>
 }
 @
 
+
+\subsection{Outputting the variables}
+
+We only want to output the variables if they haven't already been output.
+To achieve this we'll use a flag variable.
+<<output variables if not already done>>=
+local file=$(file_or_stdin "$1")
+if [[ -z "$VARS_ALREADY_OUTPUT" ]]; then
+  VARS_ALREADY_OUTPUT=1
+  <<echo the needed variables>>
+fi
+@
 
 \subsection{Generate the [[ladok]] command}
 
@@ -682,6 +843,10 @@ echo 'do'
 echo '  ladok student -c "${COURSE_CODE}" -r "${student_id}"'
 echo '  echo'
 echo 'done'
+<<echo the needed variables>>=
+echo "COURSE=\"$(course_nick $file)\""
+echo "COURSE_CODE=\"$(course_code $file)\""
+echo "STUDENT=\"$(student $file)\""
 @
 
 \subsection{Generate the [[canvaslms]] command}
@@ -716,6 +881,9 @@ A better idea is to make [[-a]] and [[-A]] not mutually exclusive in
 <<specify assignment or assignment groups if they exist>>=
 echo '  -a "${ASSIGN}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
+<<echo the needed variables>>=
+echo "ASSIGN=\"$(assignments $file)\""
+echo "ASSIGN_GRPS=\"$(assignment_groups $file)\""
 @
 
 
@@ -731,7 +899,7 @@ We do this for all forms that we're interested in.
 For the rewriting, some forms use different formats and, thus, require 
 different rewriters.
 So we separate them into different groups.
-<<construct restlabb command from email>>=
+<<construct [[restlabb]] command from email>>=
 echo "RESTLABB_FORMS='${RESTLABB_FORMS}'"
 echo '(for form in ${RESTLABB_FORMS}; do kthutils forms export ${form}; done) \'
 echo '  | <<resort chronologically>> \'
@@ -753,7 +921,7 @@ Now we do the same, but for the LabWeek forms.
 <<variables>>=
 LABWEEK_FORMS=$(kthutils forms ls \
                 | grep -iE "labweek202[6-9]")
-<<construct restlabb command from email>>=
+<<construct [[restlabb]] command from email>>=
 echo "LABWEEK_FORMS='${LABWEEK_FORMS}'"
 echo '(for form in ${LABWEEK_FORMS}; do kthutils forms export ${form}; done) \'
 echo '  | <<resort chronologically>> \'
@@ -784,7 +952,7 @@ We want to change the default regex for passing grades ([[-F]]) to include the
 numbers too (for the mandatory surveys).
 We also want to add a regex for the optional assignments ([[-O]]), which we 
 prefix with \enquote{Optional:}.
-<<construct missing command from email>>=
+<<construct [[missing]] command from email>>=
 echo 'canvaslms results \'
 echo '  -c "${COURSE}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
@@ -798,7 +966,7 @@ echo '            -O "^Optional:"'
 \subsection{Generate the report command}
 
 Then the reporting will be similar to the above, just without the [[-M]] flag.
-<<construct report command from email>>=
+<<construct [[report]] command from email>>=
 echo 'canvaslms results \'
 echo '  -c "${COURSE}" \'
 echo '  -A "${ASSIGN_GRPS}" \'
@@ -808,31 +976,15 @@ echo '  -S canvaslms.grades.conjunctavgsurvey \'
 This is because we want to pipe the data to the [[ladok -v report -f]] command.
 Usually the one in Canvas contains other data as well, like the semester.
 We want to remove that and keep only the course code.
-<<construct report command from email>>=
+<<construct [[report]] command from email>>=
 echo '| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \'
 @ Normally, that works.
 However, sometimes it doesn't.
 Some courses deviate, maybe due to being a manual merge of several course rooms 
 in Canvas.
 So we add the following backup:
-<<construct report command from email>>=
+<<construct [[report]] command from email>>=
 echo '| awk -F "\t" -v OFS="\t" -v code=$COURSE_CODE "{\$1=code; print}"'
-@
-
-\subsection{Outputting the variables}
-
-We only want to output the variables if they haven't already been output.
-To achieve this we'll use a flag variable.
-<<output variables if not already done>>=
-local file=$(file_or_stdin "$1")
-if [[ -z "$VARS_ALREADY_OUTPUT" ]]; then
-  VARS_ALREADY_OUTPUT=1
-  echo "COURSE=\"$(course_nick $file)\""
-  echo "COURSE_CODE=\"$(course_code $file)\""
-  echo "ASSIGN=\"$(assignments $file)\""
-  echo "ASSIGN_GRPS=\"$(assignment_groups $file)\""
-  echo "STUDENT=\"$(student $file)\""
-fi
 @
 
 \subsection{Testing on the emails}
@@ -858,6 +1010,12 @@ output = subprocess.run(["./edumail", "results", "email3.txt"],
 print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
 
+
+\section{The script as a whole}
+
+The script is now complete.
+It reads like this:
+\inputminted{bash}{edumail.sh}
 
 \printbibliography{}
 
