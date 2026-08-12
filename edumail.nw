@@ -181,6 +181,14 @@ kthutils forms export restlabb23/24 \
   | grep "Studenten Studentensson"
 \end{minted}
 \end{example}
+The [[ladok]] command fetches the student's results from LADOK.
+However, to do that, we need the student's identifier from Canvas.
+We can use [[canvaslms]] to fetch student data from Canvas.
+Restlabb takes presentations for the intro programming courses after the course 
+has ended.
+Those TAs can't access the course's Canvas room, so they file their reports in 
+a form that can be exported as a spreadsheet.
+The [[kthutils forms export]] command can export those results for us.
 
 \begin{example}\label{email2}
 Another email:
@@ -472,8 +480,12 @@ course_code() {
   (
     clean "$file" \
     | grep -Po "${COURSE_CODE}"
+    if <<test for datintro terms>>; then
+      echo "DD1301|DD1337)"
+    fi
     if <<test for programming terms>>; then
-      echo "DD131[07]"
+      echo "DD1310"
+      echo "DD1317"
     fi
     if <<test for crypto terms>>; then
       echo "DD2520"
@@ -506,8 +518,13 @@ course_nick() {
   (
     clean "$file" \
     | grep -Po "${COURSE_NICK}"
+    if <<test for datintro terms>>; then
+      echo "datintro${YEARS_REGEX}"
+      echo "progd${YEARS_REGEX}"
+    fi
     if <<test for programming terms>>; then
-      echo "prg[im]${YEARS_REGEX}"
+      echo "prgm${YEARS_REGEX}"
+      echo "prgi${YEARS_REGEX}"
     fi
     if <<test for crypto terms>>; then
       echo "tilkry${YEARS_REGEX}"
@@ -561,21 +578,28 @@ So we have to guess what course it is based on the content of the email.
 For the programming course, there are a few things to look for.
 Firstly, everything is in Swedish.
 Secondly, we look for common terms for the course (programming, Python) and 
-then the unique terms for assignments (\enquote{datorprov} rather than 
-\enquote{labbar}, the latter being too generic).
+then the unique terms for assignments (\enquote{datorprov} as a specific name 
+rather than \enquote{labbar}, the latter being too generic).
 The crypto and science courses are for fourth and fifth year students, so they 
 are in English---although Swedish students sometimes write their emails in 
 Swedish if they have figured out that I'm fluent in Swedish.
 <<test for programming terms>>=
-   <<look for>> "programm?ering|python|DD131[07]" \
-|| <<look for>> "datorprov|projekt|p-uppgift|redovis|gransk|spec" \
-|| <<look for>> "labb [1-6]|Excel"
+   <<look for>> "programm?ering|python|DD1310|DD1317" \
+|| <<look for>> "datorprov|projekt|p-uppgift|gransk|spec" \
+|| <<look for>> "lab(b|oration) [1-6]|Excel" \
+|| <<look for>> "restlab"
+<<test for datintro terms>>=
+   <<look for>> "data?intro|DD13(01|37)" \
+|| <<look for>> "ssh|terminal|student-shell|bash|shell|Public" \
+|| <<look for>> "rättning|s[ck]ript" \
+|| <<look for>> "git|latex"
 <<test for crypto terms>>=
    <<look for>> "[kc]rypto|DD2520" \
 || <<look for>> "ciphertext|plaintext|breaking|[ck]rypo?tanalys" \
-|| <<look for>> "ProVerif|usability"
+|| <<look for>> "AES|ProVerif|usability" \
+|| <<look for>> "INL1 ?(Written|Oral)"
 <<test for science terms>>=
-<<look for>> "DA2215|TAMOS|scien|project|seminar"
+<<look for>> "DA2215|TAMOS|scien|project|seminar|formal|report"
 @
 
 We want the [[grep]] to be quiet and case insensitive.
@@ -664,19 +688,11 @@ ASSIGNMENT_GROUP="[A-Z][A-Z][A-Z]+[0-9]+"
 
 Now we'll do like we've done before and grep for these in the email, getting 
 only the matching parts.
-However, if we don't get anything, we'll use the regex itself as the output.
-The reason is that this will match all assignment groups in Canvas and ignore 
-any other assignment groups (\eg teaching material).
-
-We also note that we must not match the course code, since those also fit the 
-pattern in [[ASSIGNMENT_GROUP]].
 <<functions>>=
 assignment_groups() {
   local file=$(file_or_stdin "$1")
-  local groups=$(clean "$file" \
-                  | grep -Po "${ASSIGNMENT_GROUP}" \
-                  | grep -Pv "${COURSE_CODE}" \
-                  | sort -u)
+  local groups=$( (<<find assignment groups in [[file]]>>) \
+                  | sort -u )
   if [[ -n "$groups" ]]; then
     echo "$groups"
   else
@@ -685,6 +701,93 @@ assignment_groups() {
 }
 <<variables>>=
 ASSIGNMENT_GROUP_DEFAULT="(LAB|INL|SEM)[0-9]+"
+@
+
+The first thing we'll do is to look for things that look like assignment groups 
+in the email.
+We note that we must not match the course code, since those also fit the 
+pattern in [[ASSIGNMENT_GROUP]], so we remove anything that also match a course 
+code.
+<<find assignment groups in [[file]]>>=
+clean "$file" \
+| grep -Po "${ASSIGNMENT_GROUP}" \
+| grep -Pv "${COURSE_CODE}"
+@
+
+This will rarely be sufficient, so we also look for keywords that indicate 
+which assignment group it is.
+This is easy for the datintro and vetcyb courses, they only have one assignment 
+group, so we can reuse the tests from above.
+However, a keyword in one course might indicate a different assignment group in 
+another course, so we'd better make these course specific.
+<<find assignment groups in [[file]]>>=
+if course "$file" | grep -qP "(DD13(01|37)|datintro)"; then
+  if <<test for datintro terms>>; then
+    echo "LAB1"
+  fi
+fi
+if course "$file" | grep -qP "(DA2215|vetcyb)"; then
+  if <<test for science terms>>; then
+    echo "INL1"
+  fi
+fi
+@ Note that we don't use [[elif]]: a student might email about several courses 
+in one email.
+
+For the other courses we must be more specific, since they have different 
+modules corresponding to different assignments.
+<<find assignment groups in [[file]]>>=
+if course "$file" | grep -qP "(DD131[07]|prg[im])"; then
+  if <<test for programming LAB1 terms>>; then
+    echo "LAB1"
+  fi
+  if <<test for prgoramming LAB2 terms>>; then
+    echo "LAB2"
+  fi
+  if <<test for programming LAB3 terms>>; then
+    echo "LAB3"
+  fi
+  if <<test for programming KAL1 terms>>; then
+    echo "KAL1"
+  fi
+fi
+if course "$file" | grep -qP "(DD2520|tilkry)"; then
+  if <<test for tilkry LAB1 terms>>; then
+    echo "LAB1"
+  fi
+  if <<test for tilkry INL1 terms>>; then
+    echo "INL1"
+  fi
+fi
+@
+
+LAB1 for the programming course is a series of labs.
+<<test for programming LAB1 terms>>=
+<<look for>> "lab(b|oration) [1-6]"
+@ LAB2 is the so called Datorprov, an exam.
+<<test for prgoramming LAB2 terms>>=
+<<look for>> "datorprov|(kontroll|kort)skrivning|prov|tenta"
+@ LAB3 is the project assignment.
+<<test for programming LAB3 terms>>=
+<<look for>> "projekt|p-uppgift|gransk|spec"
+@ KAL1 is the Excel part, consists of four labs in Excel.
+<<test for programming KAL1 terms>>=
+<<look for>> "Excel"
+@
+
+Let's look at the security courses.
+LAB1 for applied crypto (tilkry) is a series of mandatory and optional labs.
+But it also contains the usabilty and design considerations seminars.
+<<test for tilkry LAB1 terms>>=
+<<look for>> "AES|ProVerif|usabilty|design|consideration|VSD|seminar"
+@ INL1 on that course consists of the creatively named assignments
+\begin{itemize}
+  \item INL1 Written,
+  \item INL1 Oral, and
+  \item INL1 Quiz.
+\end{itemize}
+<<test for tilkry INL1 terms>>=
+<<look for>> "INL1 ?(Written|Oral|Quiz)|quiz|written|oral"
 @
 
 None of the examples (\cref{email1,email2}) contain any assignment groups.
@@ -715,13 +818,13 @@ output = subprocess.run(["./edumail", "assignment_groups", "email1.txt"],
                         capture_output=True)
 print_verbatim(output.stdout)
 \end{pycode}
+So we see that it's important to have a good default.
 And \cref{email2}:
 \begin{pycode}
 output = subprocess.run(["./edumail", "assignment_groups", "email2.txt"],
                         capture_output=True)
 print_verbatim(output.stdout)
 \end{pycode}
-So it's important with a good default.
 
 \subsection{Assignments}
 
@@ -738,7 +841,7 @@ However, if we don't find any, we won't output a default regex.
 assignments() {
   local file=$(file_or_stdin "$1")
   local assns=$(clean "$file" \
-                | grep -iEo "${ASSIGNMENT}" \
+                | grep -iPo "${ASSIGNMENT}" \
                 | sort -u)
   if [[ -n "$assns" ]]; then
     echo "$assns"
@@ -748,7 +851,7 @@ assignments() {
 
 The known assignments names are as follows.
 <<variables>>=
-ASSIGNMENT="granskn|lab(b|oration) ?[0-9]*|spec|redovisn|projekt|datorprov"
+ASSIGNMENT="granskn|lab(b|oration) ?[0-9]+|spec|p-uppgift|projekt|datorprov"
 @
 
 Let's test this on the emails from the examples above.
