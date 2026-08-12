@@ -4,7 +4,7 @@ all: edumail.pdf
 LATEXFLAGS+=	-shell-escape
 
 edumail.pdf: edumail.tex didactic.sty
-edumail.pdf: abstract.tex
+edumail.pdf: abstract.tex preamble.tex
 edumail.pdf: edumail
 
 edumail.tex: edumail.nw noweb_lexer.py
