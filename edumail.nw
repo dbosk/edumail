@@ -354,11 +354,15 @@ USER_FORMAT="[a-zA-Z0-9]+"
 @
 
 If we didn't find an email address, we'll try to extract the student's name.
+If the student sent the email through Canvas, we will not have their KTH email 
+and we will have the text \enquote{via Canvas Notifications} appended to the 
+name---we want to remove that.
 <<functions>>=
 student_name() {
   local file=$(file_or_stdin "$1")
   local name
-  name=$(grep "^To: " $file | sed 's/^To: //' | sed "s/ <.*//")
+  name=$(grep "^To: " $file | sed 's/^To: //' \
+         | sed -E "s/( via Canvas( Notifications)?)? <.*//")
   if [[ -n "$name" ]]; then
     echo "$name"
     return 0
