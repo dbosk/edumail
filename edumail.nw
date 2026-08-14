@@ -485,7 +485,8 @@ course_code() {
     clean "$file" \
     | grep -Po "${COURSE_CODE}"
     if <<test for datintro terms>>; then
-      echo "DD1301|DD1337)"
+      echo "DD1301"
+      echo "DD1337"
     fi
     if <<test for programming terms>>; then
       echo "DD1310"
