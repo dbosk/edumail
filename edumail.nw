@@ -1006,38 +1006,47 @@ We do this for all forms that we're interested in.
 
 For the rewriting, some forms use different formats and, thus, require 
 different rewriters.
-So we separate them into different groups.
+Originally there were two groups: one rewriter for restlabb and one for 
+labweek.
+However, the different years use different form formats too.
+So we version the rewriters the same way as we do for the forms:
+a rewriter is named exactly like the form it rewrites (\eg [[restlabb26/27]] 
+for the form [[restlabb26/27]]).
+Consequently, we can't pipe all forms through one rewriter.
+We must pair each form with its own rewriter.
+
+This also means that we can't concatenate the exports of all forms into one 
+pipeline, as we did before.
+The rewriter must see rows of a single format, and its output is a sequence 
+of [[echo]] commands, which we can't sort afterwards.
+So we output one pipeline per form instead.
+That's also more convenient when we want to edit the commands in the editor: 
+the form name is right there in the command, rather than hidden in a variable.
 <<construct [[restlabb]] command from email>>=
-echo "RESTLABB_FORMS='${RESTLABB_FORMS}'"
-echo '(for form in ${RESTLABB_FORMS}; do kthutils forms export ${form}; done) \'
-echo '  | <<resort chronologically>> \'
-echo '  | grep "${STUDENT}" \'
-echo '  | kthutils forms rewriter rewrite restlabb'
-@ Note that we inverse the quotes on the first line above, that's because we 
-want to expand the variable [[RESTLABB_FORMS]] to include its value in the 
-output.
+for form in ${RESTLABB_FORMS}; do
+  echo "kthutils forms export ${form} \\"
+  echo '  | <<resort chronologically>> \'
+  echo '  | grep "${STUDENT}" \'
+  echo "  | kthutils forms rewriter rewrite $(form_rewriter ${form})"
+done
+@ Note that we use double quotes on the first and last lines above, that's 
+because we want to expand the form and the rewriter to include their values in 
+the output.
+Whereas the [[STUDENT]] variable should remain a variable in the output.
+Also note that [[grep]] for the student has the side effect of dropping the 
+header row of the export.
 
 Let's define the variables we need for handling restlabb.
 We can simply look through all the forms that we have.
 At least those that match \enquote{restlabb} and \enquote{labweek}.
+Since [[kthutils forms ls]] lists the forms oldest first, we'll process the 
+forms in chronological order.
 <<variables>>=
 RESTLABB_FORMS=$(kthutils forms ls \
-                 | grep -iE "restlabb2[5-9]/2[6-9]")
+                 | grep -iE "restlabb2[5-9]/2[6-9]|labweek202[6-9]")
 @
 
-Now we do the same, but for the LabWeek forms.
-<<variables>>=
-LABWEEK_FORMS=$(kthutils forms ls \
-                | grep -iE "labweek202[6-9]")
-<<construct [[restlabb]] command from email>>=
-echo "LABWEEK_FORMS='${LABWEEK_FORMS}'"
-echo '(for form in ${LABWEEK_FORMS}; do kthutils forms export ${form}; done) \'
-echo '  | <<resort chronologically>> \'
-echo '  | grep "${STUDENT}" \'
-echo '  | kthutils forms rewriter rewrite labweek'
-@
-
-In both cases, the newest entry is first.
+Within a form, the newest entry is first.
 Since sometimes a student may present and fail before finally passing, it's 
 good to have the entries in chronological order.
 This way we report the results in that order, consequently the final pass will 
@@ -1049,6 +1058,43 @@ As we get it from the forms export, it's sorted newest to oldest;
 so we just need to sort it.
 <<resort chronologically>>=
 sort
+@
+
+\subsubsection{Matching a form with its rewriter}
+
+The rewriters are stored in the [[kthutils]] config, under 
+[[forms.rewriter]].
+We don't want to maintain a table mapping forms to rewriters here, since that 
+would have to be updated every year.
+Instead we derive the rewriter from the naming convention above:
+if there is a rewriter named like the form, we use it.
+Otherwise we fall back to a rewriter named like the group ([[restlabb]] or 
+[[labweek]]), which is how a rewriter shared by several years would be named.
+Since the year suffix always starts with a digit, we can strip everything from 
+the first digit to get the group name.
+This way, adding a new year with its own rewriter to the [[kthutils]] config is 
+all that's needed, and a year without a specific rewriter can still be handled 
+by a shared one.
+<<functions>>=
+form_rewriter() {
+  local form="$1"
+  if echo "${REWRITERS}" | grep -qxF "${form}"; then
+    echo "${form}"
+  else
+    echo "${form%%[0-9]*}"
+  fi
+}
+@
+
+To know which rewriters exist, we list the config keys under 
+[[forms.rewriter]].
+Each rewriter has several settings, so the same name appears several times and 
+we must remove duplicates.
+The rewriter name can contain a slash (\eg [[restlabb26/27]]) but never a dot, 
+which is the separator in the config path.
+<<variables>>=
+REWRITERS=$(kthutils config forms.rewriter \
+            | sed -En "s/^forms\.rewriter\.([^.]+)\..*/\1/p" | sort -u)
 @
 
 
