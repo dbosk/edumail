@@ -431,14 +431,20 @@ cleanup() {
 The [[mutt]] side is a handful of macros.
 All syntax below is understood by both [[mutt]] and [[neomutt]].
 
-First two settings.
+First three settings.
 [[wait_key]] would otherwise pause with \enquote{Press any key to
 continue} after every [[<shell-escape>]]/[[<pipe-message>]], turning
 each opened email into two keypresses; our commands are silent on
 success, so nothing useful is lost.
+[[pager_stop]] closes a tracking hole:
+without it, pressing space ([[<next-page>]]) at the end of a message
+silently advances to the next message, bypassing every macro below.
+With it, space stops at the end and moving on is always an explicit
+key we \emph{have} wrapped.
 The [[editor]] is the wrapper from \cref{EditorWrapper}.
 <<[[.muttrc.nytid]]>>=
 set wait_key = no
+set pager_stop = yes
 set editor = "~/bin/mutt-nytid editor"
 @
 
@@ -447,6 +453,13 @@ pipe the message to [[open]], then display it.
 [[<pipe-message>]] respects [[pipe_decode]] (set in our [[~/.muttrc]]),
 so the script sees a decoded body---better for keyword matching than
 raw quoted-printable---while the headers it needs are kept.
+We must cover \emph{every} key that displays a message from the index.
+By default [[<display-message>]] sits on return, enter, keypad-enter
+and space, and [[h]] ([[<display-toggle-weed>]]) also opens the
+message, just with full headers.
+Keys that merely move the index selection---tab
+([[<next-new-then-unread>]]), [[j]]/[[k]], arrows---need no wrapping:
+no message is displayed, so no tracking should start.
 <<[[.muttrc.nytid]]>>=
 macro index <return> \
   "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
@@ -454,8 +467,17 @@ macro index <return> \
 macro index <enter> \
   "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
   "track and read message"
-@ Both [[<return>]] and [[<enter>]] are bound, since terminals differ
-in which of the two the return key produces.
+macro index <keypadenter> \
+  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "track and read message"
+macro index <space> \
+  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "track and read message"
+macro index h \
+  "<pipe-message>~/bin/mutt-nytid open<enter><display-toggle-weed>" \
+  "track and read message with full headers"
+@ ([[<keypadenter>]] is a NeoMutt key name; delete that line if this
+file ever feeds a stock mutt.)
 
 Leaving the pager for the index:
 <<[[.muttrc.nytid]]>>=
@@ -466,22 +488,73 @@ macro pager q "<shell-escape>~/bin/mutt-nytid close<enter><exit>" \
 @
 
 Moving between messages without leaving the pager bypasses the index
-bindings, so the navigation keys retarget the tracking themselves.
+bindings, so every message-switching pager key retargets the tracking
+itself.
 No [[close]] is needed: [[open]]'s set-difference reconciliation
 \emph{is} the close for whatever the previous message no longer
 justifies.
+And the pattern is harmless when the move fails (last message, no new
+mail): the pipe then re-feeds the \emph{same} message, whose derived
+set matches what we own, so [[open]] does nothing.
+
+The pager defaults offer many switching keys:
+[[J]]/[[K]] ([[<next-entry>]]/[[<previous-entry>]]),
+tab ([[<next-new-then-unread>]]---the workhorse when reading new
+mail),
+[[j]]/[[k]] and the arrows
+([[<next-undeleted>]]/[[<previous-undeleted>]]),
+and the thread motions on control-N/P and escape-n/p.
+We wrap them all with the same tail.
 <<[[.muttrc.nytid]]>>=
 macro pager J "<next-entry><pipe-message>~/bin/mutt-nytid open<enter>" \
   "track and view next message"
 macro pager K \
   "<previous-entry><pipe-message>~/bin/mutt-nytid open<enter>" \
   "track and view previous message"
-@ A known leak remains:
-anything else that auto-advances the pager (deleting with [[d]] when
-[[resolve]] is set, for instance) keeps the previous email's labels
-running until the next [[open]] or [[close]].
-We accept that rather than wrapping every such key; wrap [[d]] the same
-way as [[J]] if it turns out to matter.
+macro pager <tab> \
+  "<next-new-then-unread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view next new message"
+macro pager j \
+  "<next-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view next undeleted message"
+macro pager <down> \
+  "<next-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view next undeleted message"
+macro pager <right> \
+  "<next-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view next undeleted message"
+macro pager k \
+  "<previous-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view previous undeleted message"
+macro pager <up> \
+  "<previous-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view previous undeleted message"
+macro pager <left> \
+  "<previous-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view previous undeleted message"
+macro pager \Cn \
+  "<next-thread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view next thread"
+macro pager \Cp \
+  "<previous-thread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view previous thread"
+macro pager \en \
+  "<next-subthread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view next subthread"
+macro pager \ep \
+  "<previous-subthread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view previous subthread"
+@ One known leak remains:
+deleting with [[d]] auto-advances the pager (via [[resolve]]) without
+retargeting, so the deleted email's labels run until the next wrapped
+key or [[close]].
+We leave [[d]] unwrapped on purpose:
+after deleting the \emph{last} message the pager falls back to the
+index, where a trailing [[<pipe-message>]] would start labels for a
+message we are not reading---a worse failure than a short-lived stale
+label that the next tab press corrects anyway.
+(Pager [[h]] needs no wrapping either: it redisplays the \emph{same}
+message with full headers, and the labels are already running.)
 
 Finally, adjusting the labels while reading (or from the index):
 <<[[.muttrc.nytid]]>>=
