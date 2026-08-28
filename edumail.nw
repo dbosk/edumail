@@ -1023,6 +1023,7 @@ So we output one pipeline per form instead.
 That's also more convenient when we want to edit the commands in the editor: 
 the form name is right there in the command, rather than hidden in a variable.
 <<construct [[restlabb]] command from email>>=
+<<fetch forms data if not already done>>
 for form in ${RESTLABB_FORMS}; do
   echo "kthutils forms export ${form} \\"
   echo '  | <<resort chronologically>> \'
@@ -1039,11 +1040,28 @@ header row of the export.
 Let's define the variables we need for handling restlabb.
 We can simply look through all the forms that we have.
 At least those that match \enquote{restlabb} and \enquote{labweek}.
-Since [[kthutils forms ls]] lists the forms oldest first, we'll process the 
+Since [[kthutils forms ls]] lists the forms oldest first, we'll process the
 forms in chronological order.
-<<variables>>=
-RESTLABB_FORMS=$(kthutils forms ls \
-                 | grep -iE "restlabb2[5-9]/2[6-9]|labweek202[6-9]")
+
+We don't want to fetch this data when the script loads.
+Each [[kthutils]] call is a round trip to KTH's servers, taking seconds.
+That was acceptable when the script was only used for the results
+subcommands, which need the data anyway.
+But the [[labels]] subcommand (\cref{LabelsSection}) is called for every
+email we open in [[mutt]], and it never needs the forms.
+So we fetch the data at first use instead, using the same flag-variable
+idiom as [[<<output variables if not already done>>]].
+The memoization works across the [[$(form_rewriter ...)]] command
+substitutions in [[<<construct [[restlabb]] command from email>>]]:
+the fetch runs in the function's own shell, so the subshells inherit both
+the flag and the fetched variables.
+<<fetch forms data if not already done>>=
+if [[ -z "$FORMS_ALREADY_FETCHED" ]]; then
+  FORMS_ALREADY_FETCHED=1
+  RESTLABB_FORMS=$(kthutils forms ls \
+                   | grep -iE "restlabb2[5-9]/2[6-9]|labweek202[6-9]")
+  <<fetch the [[REWRITERS]] from the [[kthutils]] config>>
+fi
 @
 
 Within a form, the newest entry is first.
@@ -1078,6 +1096,7 @@ by a shared one.
 <<functions>>=
 form_rewriter() {
   local form="$1"
+  <<fetch forms data if not already done>>
   if echo "${REWRITERS}" | grep -qxF "${form}"; then
     echo "${form}"
   else
@@ -1086,13 +1105,18 @@ form_rewriter() {
 }
 @
 
-To know which rewriters exist, we list the config keys under 
+Note that [[form_rewriter]] also starts with
+[[<<fetch forms data if not already done>>]]:
+it needs [[REWRITERS]] when called directly as a subcommand, without going
+through [[restlabb]] first.
+
+To know which rewriters exist, we list the config keys under
 [[forms.rewriter]].
-Each rewriter has several settings, so the same name appears several times and 
+Each rewriter has several settings, so the same name appears several times and
 we must remove duplicates.
-The rewriter name can contain a slash (\eg [[restlabb26/27]]) but never a dot, 
+The rewriter name can contain a slash (\eg [[restlabb26/27]]) but never a dot,
 which is the separator in the config path.
-<<variables>>=
+<<fetch the [[REWRITERS]] from the [[kthutils]] config>>=
 REWRITERS=$(kthutils config forms.rewriter \
             | sed -En "s/^forms\.rewriter\.([^.]+)\..*/\1/p" | sort -u)
 @
@@ -1163,6 +1187,167 @@ output = subprocess.run(["./edumail", "results", "email3.txt"],
                         capture_output=True)
 print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
+
+
+\section{Extracting time-tracking labels}\label{LabelsSection}
+
+The same parsing that finds a course for the results subcommands can also
+answer a different question: which time-tracking labels does this email
+belong to?
+We track our working time with [[nytid track]], which tracks any number of
+concurrently running, free-form labels.
+The [[mutt-nytid]] integration (its own literate program,
+[[muttnytid.nw]], in this repository) starts labels when we open an email
+in [[mutt]] and stops them when we return to the index.
+It delegates the parsing to the [[labels]] subcommand, so that all
+knowledge about what our emails look like stays in one place.
+
+Where the results subcommands output regexes---they need to \emph{match}
+course rounds like [[prgi23]]---time tracking needs stable \emph{names}.
+A label is an identity that accumulates time across years, so we output
+the course nick without any year suffix ([[tilkry]], not
+[[tilkry(24|25|26)]]).
+For the same reason we output one label per course family rather than the
+code pairs the results subcommands use:
+[[prgm]] covers both DD1310 and DD1317, whose emails we cannot tell apart
+anyway.
+Course codes that appear \emph{literally} in the email are still worth
+emitting: the student told us exactly which course they mean, and a code
+is a stable name.
+<<functions>>=
+labels() {
+  local file=$(file_or_stdin "$1")
+  (
+    clean "$file" \
+    | grep -Po "${COURSE_CODE}"
+    if <<test for datintro terms>>; then
+      echo "datintro"
+    fi
+    if <<test for programming terms>>; then
+      echo "prgm"
+    fi
+    if <<test for crypto terms>>; then
+      echo "tilkry"
+    fi
+    if <<test for science terms>>; then
+      echo "vetcyb"
+    fi
+    labels_rules "$file"
+  ) | sort -u
+}
+@ Duplicates are expected---a course both named and described by keywords,
+or several rules yielding the same label---so we deduplicate, and the
+sorted output doubles as a canonical form that callers can compare and
+diff against (which [[mutt-nytid]] does to keep timers running across
+consecutive emails about the same course).
+
+\subsection{User-defined label rules}
+
+The course tests above change rarely, so hard-coding them in this script
+is fine.
+Label rules are different: a new mailing list, an administrative sender, a
+committee---these appear all the time, and the person adding them is in
+their mail client, not in this repository rebuilding the script.
+So the remaining rules live in a configuration file,
+<<variables>>=
+LABELS_RULES="${XDG_CONFIG_HOME:-$HOME/.config}/edumail/labels.rules"
+@ with one rule per line:
+a pattern, whitespace, and the labels that pattern maps to.
+A [[#]] starts a comment.
+The pattern is a case-insensitive Perl regex, optionally prefixed by a
+field to restrict where it must match:
+[[from:]] matches only the \enquote{From: } header (this is how senders
+become labels), [[subject:]] only the \enquote{Subject: } header, and no
+prefix matches anywhere in the cleaned email.
+For example:
+\begin{minted}{text}
+# pattern                      labels
+from:.*@ug\.kth\.se            admin
+exjobb|thesis                  supervision exjobb
+\end{minted}
+
+We read the file with [[read]], which splits on whitespace:
+the first word is the pattern, the rest are the labels.
+This gives a trivially simple format at the price that a pattern cannot
+contain literal whitespace---use [[\s]] in the regex instead.
+Every matching rule contributes its labels; an email about two things gets
+both sets, which is exactly what concurrent time tracking wants.
+<<functions>>=
+labels_rules() {
+  local file=$(file_or_stdin "$1")
+  [[ -r "${LABELS_RULES}" ]] || return 0
+  local pattern rule_labels field
+  while read -r pattern rule_labels; do
+    <<skip comments and blank lines>>
+    <<split any [[field]] prefix off [[pattern]]>>
+    <<emit [[rule_labels]] if [[pattern]] matches [[field]]>>
+  done < "${LABELS_RULES}"
+}
+@ A missing rules file is not an error:
+the course tests alone are a useful default, and [[mutt-nytid]] must keep
+working on a machine where no rules have been written yet.
+
+A comment line's first word starts with [[#]], and on a blank line
+[[read]] leaves the pattern empty.
+<<skip comments and blank lines>>=
+[[ -z "${pattern}" || "${pattern}" == \#* ]] && continue
+@
+
+The field prefix is split off with shell prefix removal rather than
+parsed with a regex:
+a colon is legal in a regex, so we only treat the two known prefixes
+specially and let anything else---including a pattern that happens to
+start with [[http:]]---fall through as a whole-email pattern.
+<<split any [[field]] prefix off [[pattern]]>>=
+field=any
+case "${pattern}" in
+  from:*)    field=from;    pattern="${pattern#from:}";;
+  subject:*) field=subject; pattern="${pattern#subject:}";;
+esac
+@
+
+Matching selects the text to search and then reuses the same
+case-insensitive Perl grep as the course tests.
+The header fields are matched against the raw email, not the cleaned one:
+[[clean]] exists to stop \emph{body} keywords from matching noise headers,
+but a [[from:]] rule wants exactly a header line.
+The unquoted [[${rule_labels}]] in [[printf]] is deliberate:
+word splitting turns the rule's labels into one argument each, which
+[[printf]] then prints one per line, the output format of [[labels]].
+<<emit [[rule_labels]] if [[pattern]] matches [[field]]>>=
+case "${field}" in
+  from)    grep -i "^From: "    "$file";;
+  subject) grep -i "^Subject: " "$file";;
+  any)     clean "$file";;
+esac | grep -qiP "${pattern}" \
+  && printf '%s\n' ${rule_labels}
+@
+
+\subsection{Testing on the emails}
+
+Let's run [[labels]] on the example emails.
+(We point [[XDG_CONFIG_HOME]] at a nonexistent directory so the author's
+personal rules file doesn't leak into this document.)
+\Cref{email1} mentions the programming course by code and by keywords, so
+it yields:
+\begin{pycode}
+import os
+norules = dict(os.environ, XDG_CONFIG_HOME="/nonexistent")
+output = subprocess.run(["./edumail", "labels", "email1.txt"],
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+\Cref{email2} never names a course, but its subject
+(\enquote{Projektgranskning}) hits the programming courses' keyword test,
+so the email is still labelled:
+\begin{pycode}
+output = subprocess.run(["./edumail", "labels", "email2.txt"],
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+An email matching neither a course test nor a rule yields nothing at all;
+it's the caller's job to fall back to something sensible---[[mutt-nytid]]
+always adds a base [[email]] label of its own.
 
 
 \section{The script as a whole}
