@@ -1,0 +1,548 @@
+\documentclass[a4paper,10pt,article,oneside,oldfontcommands]{memoir}
+\let\subsubsection\subsection
+\let\subsection\section
+\let\section\chapter
+
+\input{preamble.tex}
+\noweboptions{longxref,breakcode}
+
+\usepackage[noamsthm,notheorems]{beamerarticle}
+\setjobnamebeamerversion{slides}
+
+\title{%
+  Tracking email time in mutt with nytid
+}
+\author{%
+  Daniel Bosk
+}
+\institute{%
+  KTH EECS
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  We track our working time with [[nytid track]], which can run any
+  number of concurrently running, free-form labels.
+  We want that tracking to be automatic while reading email:
+  when we open an email in [[mutt]], labels derived from the email
+  (course, sender, keywords) should start; when we return to the index,
+  they should stop; while we write a reply, a [[replying]] label should
+  run.
+  [[mutt]] has no hooks for leaving the pager or finishing a reply, so we
+  build the integration from macro-wrapped key bindings, an editor
+  wrapper, and a small state-keeping helper script.
+  The label derivation itself is [[edumail]]'s job (its [[labels]]
+  subcommand); this document only glues it to [[mutt]] and [[nytid]].
+\end{abstract}
+\vfill
+\inputminted[numbers=none]{text}{LICENSE}
+\clearpage
+
+\tableofcontents
+\clearpage
+
+\begin{pycode}
+import os
+import subprocess
+
+def print_verbatim(output):
+    print(r"\begin{verbatim}")
+    if isinstance(output, bytes):
+      output = output.decode()
+    print(output)
+    print(r"\end{verbatim}")
+
+demoenv = dict(os.environ,
+               EDUMAIL="./edumail",
+               XDG_CONFIG_HOME="/nonexistent")
+\end{pycode}
+
+@
+\section{Introduction}
+
+% What's the problem?
+We already track the [[mutt]] session as a whole:
+the [[mutt]] command on our machines is a wrapper that runs
+\mintinline{bash}{nytid track start mutt -- neomutt}, so the [[mutt]]
+label runs for as long as the mail client does.
+That tells us how much time email costs in total, but not \emph{what}
+the time was spent on---which course, which committee, which student
+matter when we sum up hours.
+% What's the approach?
+Since [[edumail labels]] can already tell from an email which labels it
+belongs to, the missing piece is knowing \emph{when} we start and stop
+reading each email.
+
+The natural place for that knowledge is [[mutt]] itself, but [[mutt]]'s
+hook model works against us.
+There are hooks that fire before a message is displayed
+([[message-hook]]) and before a message is sent ([[send-hook]]), but
+there is no hook for returning from the pager to the index, and none
+for finishing (or aborting) a reply.
+So instead of hooks we use macros:
+we rebind the keys that open, leave, and navigate between messages so
+that they additionally pipe the message through a helper script.
+For replies we use a different trick, described in
+\cref{EditorWrapper}, that needs no reply bindings at all.
+
+\subsection{Structural overview}
+
+This document tangles four files that cooperate:
+\begin{description}
+\item[\normalfont [[<<[[mutt-nytid.sh]]>>]] ]
+  installed as [[~/bin/mutt-nytid]]:
+  the helper script that [[mutt]] calls.
+  It derives labels (via [[edumail labels]]), starts and stops
+  [[nytid]] timers, and keeps state about which labels \emph{it}
+  started.
+\item[\normalfont [[<<[[.muttrc.nytid]]>>]] ]
+  installed as [[~/.muttrc.nytid]] and sourced from [[~/.muttrc]]:
+  the macros and settings that wire the helper into [[mutt]].
+\item[\normalfont [[<<[[mutt.sh]]>>]] ]
+  installed as [[~/bin/mutt]]:
+  the session wrapper, extended to clean up per-email timers when the
+  mail client exits.
+\item[\normalfont [[<<[[labels.rules]]>>]] ]
+  installed as [[~/.config/edumail/labels.rules]] (only if absent):
+  seed rules for [[edumail labels]], see the edumail documentation for
+  the format.
+\end{description}
+
+A reading session then works like this.
+Pressing return in the index pipes the message to
+[[mutt-nytid open]], which starts the derived labels, and then displays
+the message.
+Leaving the pager runs [[mutt-nytid close]], which stops them.
+Moving to the next message from within the pager runs [[open]] again,
+which retargets the timers:
+labels shared with the previous email simply keep running.
+Replying opens the editor, which [[mutt]] is configured to reach
+through [[mutt-nytid editor]]---the wrapper tracks the [[replying]]
+label for exactly as long as the editor runs.
+And when the mail client exits, the [[mutt]] wrapper calls
+[[mutt-nytid cleanup]] so no per-email timer can outlive the session.
+
+
+\section{The helper script}\label{TheHelperScript}
+
+The script follows the same conventions as [[edumail]]:
+subcommands are functions, dispatched by a [[main]] that is skipped
+when the script is sourced, and functions that read a message accept a
+filename or fall back to stdin.
+<<[[mutt-nytid.sh]]>>=
+#!/bin/bash
+
+<<variables>>
+<<functions>>
+
+main() {
+  <<parse which subcommand should be called and call its function>>
+}
+
+# call main if not sourced
+# https://stackoverflow.com/a/28776166/1305099
+(return 0 2>/dev/null) || main "$@"
+@
+
+The dispatcher is the same construction as in [[edumail]]:
+evaluate [["$@"]] so the first argument names the function and the rest
+become its arguments, or print the list of functions as usage.
+<<parse which subcommand should be called and call its function>>=
+[[ "$1" = "" ]] \
+  && echo -e "Usage: $0 [function] args\nFunctions:\n$(
+       sed -En 's/^(\w+)\(\) \{/  \1/p' $0 | grep -Pv '^\s*main$')" \
+  || "$@"
+@
+
+We also need [[edumail]]'s [[file_or_stdin]]:
+[[mutt]]'s [[<pipe-message>]] gives us the message on stdin, but the
+functions may need to read it more than once.
+The [[EDUMAIL]] variable lets tests (and this document's compilation)
+point at a not-yet-installed [[edumail]].
+<<functions>>=
+file_or_stdin() {
+  local file="$1"
+  if [[ "$file" = "" ]]; then
+    file=$(mktemp)
+    cat > "$file"
+  fi
+  echo "$file"
+}
+<<variables>>=
+EDUMAIL="${EDUMAIL:-edumail}"
+@
+
+\subsection{State: the labels we own}
+
+The one invariant that makes this integration safe to run next to
+everything else [[nytid]] tracks is \emph{ownership}:
+the script only ever stops labels that it started itself.
+The outer [[mutt]] session label, timers started from another terminal,
+another concurrently running [[mutt]]---none of these may be touched.
+We therefore never use [[nytid track stop]]'s batch semantics (stop the
+most recent batch), which could hit someone else's batch; we always
+stop explicitly named labels, and only names taken from our own record.
+
+That record is a file, [[current]], holding one label per line, sorted.
+Sorted, because the functions below compare label sets with [[comm]],
+which requires sorted input; keeping the file sorted at every write
+means we never have to remember to sort at the reads.
+The file lives in a per-session directory:
+the [[mutt]] wrapper exports [[MUTT_NYTID_SESSION]] (its process id),
+so two mail clients running at the same time keep separate books.
+<<variables>>=
+STATE_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/mutt-nytid"
+STATE_DIR="${STATE_DIR}/${MUTT_NYTID_SESSION:-default}"
+CURRENT="${STATE_DIR}/current"
+@
+
+Reading the record must work before the first [[open]] has created it,
+so a missing file just means we own nothing yet.
+<<functions>>=
+current_labels() {
+  [[ -r "${CURRENT}" ]] && cat "${CURRENT}"
+  return 0
+}
+@
+
+Starting labels is where ownership is established, so we don't record
+what we \emph{asked} for but what [[nytid]] \emph{confirms} it started.
+[[nytid track start]] is idempotent:
+labels already running are reported as \enquote{Already tracking} and
+left alone, and only the rest appear on the \enquote{Started tracking}
+line.
+Parsing that line is what protects the outer [[mutt]] label---if a
+derived label happens to already run for some other reason, it never
+enters our record and we will never stop it.
+(This also means labels must not contain spaces or commas, which
+[[nytid]]'s own command line syntax already imposes.)
+<<functions>>=
+start_labels() {
+  [[ $# -eq 0 ]] && return 0
+  mkdir -p "${STATE_DIR}"
+  local started
+  started=$(nytid track start "$@" \
+            | sed -n 's/^Started tracking: //p' \
+            | tr -d ' ' | tr ',' '\n')
+  (current_labels; echo "${started}") \
+    | sort -u | grep -v '^$' > "${CURRENT}.new"
+  mv "${CURRENT}.new" "${CURRENT}"
+}
+@ We consume [[nytid]]'s stdout (the parsing does), which has the nice
+side effect that the [[mutt]] macros run silently;
+errors still reach the terminal on stderr.
+
+Stopping is the mirror image:
+stop exactly the named labels, then drop them from the record.
+We drop them even if [[nytid]] complains---a label that isn't running
+anymore (say, stopped from another terminal) shouldn't stay in our
+books either.
+<<functions>>=
+stop_labels() {
+  [[ $# -eq 0 ]] && return 0
+  mkdir -p "${STATE_DIR}"
+  nytid track stop "$@" > /dev/null || true
+  comm -23 <(current_labels) <(printf '%s\n' "$@" | sort -u) \
+    > "${CURRENT}.new"
+  mv "${CURRENT}.new" "${CURRENT}"
+}
+@
+
+\subsection{Deriving labels}
+
+Derivation is [[edumail]]'s job; the script adds only the base
+[[email]] label, so that every opened email is tracked even when
+[[edumail]] recognizes nothing.
+The output is sorted and duplicate-free for the same reason [[current]]
+is: the callers compare label sets with [[comm]].
+<<functions>>=
+derive() {
+  local file=$(file_or_stdin "$1")
+  (
+    echo "email"
+    "${EDUMAIL}" labels "$file"
+  ) | sort -u
+}
+@
+
+This is also the testing entry point, since it's the only subcommand
+with no side effects.
+Running it on [[edumail]]'s example emails:
+\begin{pycode}
+output = subprocess.run(["./mutt-nytid", "derive", "email1.txt"],
+                        capture_output=True, env=demoenv)
+print_verbatim(output.stdout)
+\end{pycode}
+(As in the [[edumail]] documentation, we point [[XDG_CONFIG_HOME]] away
+from the author's personal rules file when compiling this document.)
+
+\subsection{Opening an email}
+
+[[open]] is bound to every way of bringing a new message into the
+pager.
+Rather than stopping everything and starting fresh, it computes set
+differences against what we own:
+labels no longer derived are stopped, newly derived ones are started,
+and labels in both sets are simply left running.
+Reading five emails about the same course in a row therefore yields one
+continuous interval per label instead of five fragments---closer to the
+truth about how the time was spent, and less churn in the tracking
+history.
+<<functions>>=
+open() {
+  local file=$(file_or_stdin "$1")
+  local derived=$(derive "$file")
+  stop_labels $(comm -23 <(current_labels) <(echo "${derived}"))
+  start_labels $(comm -13 <(current_labels) <(echo "${derived}"))
+}
+@ The unquoted command substitutions are deliberate:
+the label-per-line output word-splits into one argument per label, and
+an empty difference becomes no arguments at all, which
+[[start_labels]]/[[stop_labels]] treat as \enquote{nothing to do}.
+
+Returning to the index stops everything we own.
+<<functions>>=
+close() {
+  stop_labels $(current_labels)
+}
+@
+
+\subsection{Replying: the editor wrapper}\label{EditorWrapper}
+
+There is no way to run a command when a reply is finished:
+[[mutt]] has no such hook, and a macro cannot help either---any keys
+placed after [[<reply>]] in a macro are consumed by the compose
+prompts, not executed afterwards.
+
+But we don't need one.
+[[mutt]] invokes the editor synchronously, and our [[~/.muttrc]] sets
+[[edit_headers]], so the draft file the editor receives is a complete
+message: [[To:]], [[Subject:]], and the quoted original.
+That is exactly the input [[edumail labels]] was designed for (its
+sender extraction reads [[To:]] precisely because we parse our own
+replies).
+So we point [[mutt]]'s [[$editor]] at this wrapper:
+it derives labels from the draft itself and lets
+[[nytid track start ... --]] run the real editor, which stops those
+labels the moment the editor exits.
+One mechanism covers reply, group-reply, list-reply, forward, fresh
+compose, and---because an aborted reply also exits the editor---aborts
+too.
+<<functions>>=
+editor() {
+  local real_editor="${VISUAL:-${EDITOR:-vi}}"
+  if ! command -v nytid > /dev/null; then
+    exec "${real_editor}" "$@"
+  fi
+  local labels
+  labels=$( (derive "$1"; echo replying) | sort -u \
+            | comm -23 - <(active_labels) )
+  if [[ -z "${labels}" ]]; then
+    exec "${real_editor}" "$@"
+  fi
+  exec nytid track start ${labels} -- "${real_editor}" "$@"
+}
+@ Several details carry the safety here.
+First, if [[nytid]] is missing or broken we must still open the
+editor---losing time tracking is annoying, losing the ability to write
+email is not acceptable.
+
+Second, some derived labels may already be running:
+we usually reply from the pager, where [[open]] started them.
+[[nytid]]'s launch mode \emph{refuses} to start when any requested
+label is already active---it insists on sole ownership of the labels it
+will stop when the command exits.
+The alternatives it offers would both steal the pager's timers
+([[--replace]] restarts them, [[--continue]] adopts them and stops them
+at editor exit), so we do the third thing:
+subtract everything already active and launch only the rest.
+The pager's timers then run untouched through the reply and are stopped
+by [[close]] as usual, while the reply-only labels---normally just
+[[replying]]---stop with the editor.
+We deliberately do \emph{not} record the launched labels in
+[[current]]:
+[[nytid]] stops them itself, and double bookkeeping would have
+[[close]] trying to stop them a second time.
+([[nytid]] also adds the editor's name as a label, so reply time is
+additionally visible under [[vim]]; that comes free with the launch
+mechanism.)
+
+Third, if the subtraction leaves nothing (essentially impossible, since
+[[replying]] is not otherwise used), we must run the editor plainly:
+[[nytid track start]] with \emph{no} labels means \enquote{resume the
+last-stopped labels}, which is never what a reply should do.
+
+Asking what is active means parsing [[nytid track status]], whose
+per-label lines are indented and give the label up to the first colon.
+That parse would misread a label containing a colon, but no label this
+integration creates contains one.
+<<functions>>=
+active_labels() {
+  nytid track status 2>/dev/null \
+  | sed -n 's/^  \([^:]*\):.*/\1/p' | sort -u
+}
+@
+
+\subsection{Adjusting labels while reading}
+
+Automatic derivation will be wrong sometimes.
+The [[edit]] subcommand is bound to a key in the pager and runs in the
+terminal (via [[<shell-escape>]]), where it can talk to us:
+it presents the currently owned labels on a [[readline]] line for
+editing in place.
+The edited set is reconciled exactly like [[open]] does---stop what was
+removed, start what was added---so a label we keep simply continues
+running and loses no time.
+This only affects the current email;
+a recurring correction belongs in the rules file instead.
+<<functions>>=
+edit() {
+  local current=$(current_labels | tr '\n' ' ')
+  echo "Tracked labels for this email: ${current:-none}"
+  local edited
+  read -e -p "Edit labels: " -i "${current}" edited || return 0
+  local wanted=$(printf '%s\n' ${edited} | sort -u)
+  stop_labels $(comm -23 <(current_labels) <(echo "${wanted}"))
+  start_labels $(comm -13 <(current_labels) <(echo "${wanted}"))
+  echo "Now tracking: $(current_labels | tr '\n' ' ')"
+}
+@ Aborting the prompt with control-C or control-D leaves everything as
+it was.
+
+\subsection{Cleaning up}
+
+The wrapper calls [[cleanup]] after the mail client exits, however it
+exited:
+a normal quit, quit-without-sync, or a crash.
+Anything we still own is stopped and the session's state directory is
+removed, so stale sessions can't accumulate.
+<<functions>>=
+cleanup() {
+  close
+  rm -rf "${STATE_DIR}"
+}
+@
+
+
+\section{The mutt configuration}
+
+The [[mutt]] side is a handful of macros.
+All syntax below is understood by both [[mutt]] and [[neomutt]].
+
+First two settings.
+[[wait_key]] would otherwise pause with \enquote{Press any key to
+continue} after every [[<shell-escape>]]/[[<pipe-message>]], turning
+each opened email into two keypresses; our commands are silent on
+success, so nothing useful is lost.
+The [[editor]] is the wrapper from \cref{EditorWrapper}.
+<<[[.muttrc.nytid]]>>=
+set wait_key = no
+set editor = "~/bin/mutt-nytid editor"
+@
+
+Opening from the index:
+pipe the message to [[open]], then display it.
+[[<pipe-message>]] respects [[pipe_decode]] (set in our [[~/.muttrc]]),
+so the script sees a decoded body---better for keyword matching than
+raw quoted-printable---while the headers it needs are kept.
+<<[[.muttrc.nytid]]>>=
+macro index <return> \
+  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "track and read message"
+macro index <enter> \
+  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "track and read message"
+@ Both [[<return>]] and [[<enter>]] are bound, since terminals differ
+in which of the two the return key produces.
+
+Leaving the pager for the index:
+<<[[.muttrc.nytid]]>>=
+macro pager i "<shell-escape>~/bin/mutt-nytid close<enter><exit>" \
+  "untrack and exit pager"
+macro pager q "<shell-escape>~/bin/mutt-nytid close<enter><exit>" \
+  "untrack and exit pager"
+@
+
+Moving between messages without leaving the pager bypasses the index
+bindings, so the navigation keys retarget the tracking themselves.
+No [[close]] is needed: [[open]]'s set-difference reconciliation
+\emph{is} the close for whatever the previous message no longer
+justifies.
+<<[[.muttrc.nytid]]>>=
+macro pager J "<next-entry><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view next message"
+macro pager K \
+  "<previous-entry><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "track and view previous message"
+@ A known leak remains:
+anything else that auto-advances the pager (deleting with [[d]] when
+[[resolve]] is set, for instance) keeps the previous email's labels
+running until the next [[open]] or [[close]].
+We accept that rather than wrapping every such key; wrap [[d]] the same
+way as [[J]] if it turns out to matter.
+
+Finally, adjusting the labels while reading (or from the index):
+<<[[.muttrc.nytid]]>>=
+macro index,pager ,l "<shell-escape>~/bin/mutt-nytid edit<enter>" \
+  "edit tracking labels"
+@ Note there are no reply macros anywhere:
+reply tracking is entirely the editor wrapper's, by design
+(\cref{EditorWrapper}).
+
+
+\section{The mutt wrapper}
+
+The wrapper used to [[exec]] into [[nytid track start mutt -- neomutt]].
+Losing [[exec]] costs one waiting shell process but buys the guarantee
+this design needs:
+something runs \emph{after} the mail client exits and reaps whatever
+per-email labels are still running, no matter how the client ended.
+The exported session id gives the helper script its per-instance state
+directory (\cref{TheHelperScript}).
+<<[[mutt.sh]]>>=
+#!/bin/sh
+NEOMUTT=/usr/bin/neomutt
+MUTT_NYTID_SESSION=$$
+export MUTT_NYTID_SESSION
+nytid track start mutt -- "$NEOMUTT" "$@"
+status=$?
+"$HOME/bin/mutt-nytid" cleanup
+exit $status
+@ The [[mutt]] session label itself still needs no cleanup here:
+[[nytid]]'s launch mechanism stops it when [[neomutt]] exits, exactly
+as before.
+
+
+\section{Seed rules}
+
+The rules file format is documented with [[edumail labels]]; this seed
+only has to get a user started.
+It is installed only when no rules file exists yet, so it never
+overwrites rules the user has written.
+<<[[labels.rules]]>>=
+# Rules mapping email patterns to nytid time-tracking labels,
+# read by `edumail labels` (see edumail.pdf for the format).
+#
+#   [field:]PCRE<whitespace>label...
+#
+# field is from, subject or any (the default: anywhere in the
+# cleaned email).  Patterns are case-insensitive Perl regexes and
+# cannot contain whitespace; use \s instead.
+
+from:.*@ug\.kth\.se     admin
+@
+
+
+\section{The scripts as a whole}
+
+The helper script reads like this:
+\inputminted{bash}{mutt-nytid.sh}
+
+And the [[mutt]] configuration:
+\inputminted{text}{.muttrc.nytid}
+
+\printbibliography{}
+
+\end{document}

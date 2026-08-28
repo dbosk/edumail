@@ -4,6 +4,14 @@ edumail.pdf
 edumail.sh
 edumail.tex
 ltxobj/
+mutt-nytid
+mutt-nytid.sh
+mutt
+mutt.sh
+.muttrc.nytid
+labels.rules
+muttnytid.pdf
+muttnytid.tex
 
 
 ## Core latex/pdflatex auxiliary files:
