@@ -196,7 +196,17 @@ so two mail clients running at the same time keep separate books.
 STATE_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/mutt-nytid"
 STATE_DIR="${STATE_DIR}/${MUTT_NYTID_SESSION:-default}"
 CURRENT="${STATE_DIR}/current"
+LAST_BATCH="${STATE_DIR}/last-batch"
 @
+
+A second file, [[last-batch]], records which labels the latest
+[[start_labels]] actually started \emph{together}---in [[nytid]]
+terms one batch, sharing one start time.
+Since [[open]] resets it, it describes the current email:
+the labels whose tracking began the moment this email was opened.
+Nothing in the core open/close cycle needs it; it exists for [[edit]]
+(\cref{AdjustingLabels}), which must point [[nytid]] at
+\enquote{the batch that stands for this email}.
 
 Reading the record must work before the first [[open]] has created it,
 so a missing file just means we own nothing yet.
@@ -218,6 +228,9 @@ derived label happens to already run for some other reason, it never
 enters our record and we will never stop it.
 (This also means labels must not contain spaces or commas, which
 [[nytid]]'s own command line syntax already imposes.)
+The confirmed labels also overwrite [[last-batch]]:
+they started together just now, forming the batch that later
+additions may join.
 <<functions>>=
 start_labels() {
   [[ $# -eq 0 ]] && return 0
@@ -226,6 +239,7 @@ start_labels() {
   started=$(nytid track start "$@" \
             | sed -n 's/^Started tracking: //p' \
             | tr -d ' ' | tr ',' '\n')
+  echo "${started}" | grep -v '^$' > "${LAST_BATCH}"
   (current_labels; echo "${started}") \
     | sort -u | grep -v '^$' > "${CURRENT}.new"
   mv "${CURRENT}.new" "${CURRENT}"
@@ -239,6 +253,9 @@ stop exactly the named labels, then drop them from the record.
 We drop them even if [[nytid]] complains---a label that isn't running
 anymore (say, stopped from another terminal) shouldn't stay in our
 books either.
+A stopped label also leaves [[last-batch]]:
+both state files obey the same invariant, never listing a label we no
+longer track.
 <<functions>>=
 stop_labels() {
   [[ $# -eq 0 ]] && return 0
@@ -247,6 +264,9 @@ stop_labels() {
   comm -23 <(current_labels) <(printf '%s\n' "$@" | sort -u) \
     > "${CURRENT}.new"
   mv "${CURRENT}.new" "${CURRENT}"
+  comm -23 <(sort -u "${LAST_BATCH}" 2>/dev/null) \
+    <(printf '%s\n' "$@" | sort -u) > "${LAST_BATCH}.new"
+  mv "${LAST_BATCH}.new" "${LAST_BATCH}"
 }
 @
 
@@ -294,10 +314,15 @@ history.
 open() {
   local file=$(file_or_stdin "$1")
   local derived=$(derive "$file")
+  mkdir -p "${STATE_DIR}"
+  : > "${LAST_BATCH}"
   stop_labels $(comm -23 <(current_labels) <(echo "${derived}"))
   start_labels $(comm -13 <(current_labels) <(echo "${derived}"))
 }
-@ The unquoted command substitutions are deliberate:
+@ We reset [[last-batch]] before anything else:
+if every derived label carries over and nothing needs starting, the
+empty file correctly records that no batch stands for this email.
+The unquoted command substitutions are deliberate:
 the label-per-line output word-splits into one argument per label, and
 an empty difference becomes no arguments at all, which
 [[start_labels]]/[[stop_labels]] treat as \enquote{nothing to do}.
@@ -385,16 +410,13 @@ active_labels() {
 }
 @
 
-\subsection{Adjusting labels while reading}
+\subsection{Adjusting labels while reading}\label{AdjustingLabels}
 
 Automatic derivation will be wrong sometimes.
 The [[edit]] subcommand is bound to a key in the pager and runs in the
 terminal (via [[<shell-escape>]]), where it can talk to us:
 it presents the currently owned labels on a [[readline]] line for
 editing in place.
-The edited set is reconciled exactly like [[open]] does---stop what was
-removed, start what was added---so a label we keep simply continues
-running and loses no time.
 This only affects the current email;
 a recurring correction belongs in the rules file instead.
 <<functions>>=
@@ -404,12 +426,114 @@ edit() {
   local edited
   read -e -p "Edit labels: " -i "${current}" edited || return 0
   local wanted=$(printf '%s\n' ${edited} | sort -u)
-  stop_labels $(comm -23 <(current_labels) <(echo "${wanted}"))
-  start_labels $(comm -13 <(current_labels) <(echo "${wanted}"))
+  local added=$(comm -13 <(current_labels) <(echo "${wanted}"))
+  local removed=$(comm -23 <(current_labels) <(echo "${wanted}"))
+  if nytid_can_edit_batches; then
+    relabel "${added}" "${removed}"
+  else
+    stop_labels ${removed}
+    start_labels ${added}
+  fi
   echo "Now tracking: $(current_labels | tr '\n' ' ')"
 }
 @ Aborting the prompt with control-C or control-D leaves everything as
 it was.
+
+How the edited set takes effect matters more than it looks.
+The obvious mechanism---stop the removed labels, start the added
+ones---has two flaws when the reason for editing is \emph{wrong
+inference}:
+stopping a wrong label writes a history entry, permanently attributing
+the time to something we just declared wrong; and a label added now
+loses the minutes already spent reading before we noticed.
+The hashless [[nytid track edit]] (nytid issue~472) fixes both:
+[[--containing <label>]] targets the active batch holding a label,
+[[-r]] removes a label \emph{discarding} its accrued time
+([[--discard]] permits this even for a batch's last label), and [[-a]]
+adds labels that join \emph{retroactively} at the batch's start
+time---the moment the email was opened.
+
+Not every [[nytid]] on a machine running this script has that feature
+yet, so we probe for it and keep the stop/start reconciliation as the
+fallback.
+Probing the help text is crude but honest:
+it tests the exact option we intend to pass, rather than a version
+number that says nothing about a patched or backported build.
+<<functions>>=
+nytid_can_edit_batches() {
+  nytid track edit --help 2>/dev/null | grep -q -e --containing
+}
+@
+
+The batch-aware path handles additions before removals on purpose.
+The common correction is a swap---the course was inferred wrong, so
+one label is removed and another added.
+Adding first lets the new label join the wrong label's still-existing
+batch and inherit its start time; only then is the wrong label
+discarded.
+The other way around, discarding a batch's sole wrong label would
+destroy the batch, and the start time with it.
+<<functions>>=
+relabel() {
+  local added="$1"
+  local removed="$2"
+  <<add [[added]] to this email's batch, or start them now>>
+  <<discard each of [[removed]] from its batch>>
+}
+@
+
+Additions are anchored on the [[last-batch]] file:
+any one label from it identifies, via [[--containing]], the batch that
+[[nytid]] should extend.
+When there is no anchor---every derived label carried over from an
+earlier email, so nothing was freshly started---no batch stands for
+this email and there is no start time to inherit;
+we fall back to starting the additions now (and, through
+[[start_labels]], they then form a batch of their own and become the
+anchor for any later additions).
+The same fallback catches [[nytid]] refusing the edit, for instance
+when an added label is already active in someone else's batch.
+Labels added through the batch join it, so they too become valid
+anchors.
+<<add [[added]] to this email's batch, or start them now>>=
+local anchor=$(head -n 1 "${LAST_BATCH}" 2>/dev/null)
+if [[ -n "${added}" ]]; then
+  if [[ -n "${anchor}" ]] \
+     && nytid track edit --containing "${anchor}" \
+          $(printf -- '-a %s\n' ${added}) > /dev/null 2>&1
+  then
+    (current_labels; echo "${added}") | sort -u > "${CURRENT}.new"
+    mv "${CURRENT}.new" "${CURRENT}"
+    (sort -u "${LAST_BATCH}"; echo "${added}") \
+      | sort -u > "${LAST_BATCH}.new"
+    mv "${LAST_BATCH}.new" "${LAST_BATCH}"
+  else
+    start_labels ${added}
+  fi
+fi
+@
+
+Each removal targets the removed label's \emph{own} batch---this is
+exactly what [[--containing]] buys us, since our labels accumulate
+across batches as emails go by.
+If [[nytid]] refuses (say, the label was already stopped from another
+terminal), we fall back to a plain stop, and in either case drop the
+label from both state files, mirroring [[stop_labels]]' policy of
+never keeping a label we no longer track.
+<<discard each of [[removed]] from its batch>>=
+local label
+for label in ${removed}; do
+  nytid track edit --containing "${label}" -r "${label}" --discard \
+    > /dev/null 2>&1 \
+  || nytid track stop "${label}" > /dev/null 2>&1 \
+  || true
+  comm -23 <(current_labels) <(echo "${label}") > "${CURRENT}.new"
+  mv "${CURRENT}.new" "${CURRENT}"
+  comm -23 <(sort -u "${LAST_BATCH}" 2>/dev/null) <(echo "${label}") \
+    > "${LAST_BATCH}.new"
+  mv "${LAST_BATCH}.new" "${LAST_BATCH}"
+done
+@
 
 \subsection{Cleaning up}
 
