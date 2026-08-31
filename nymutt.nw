@@ -97,8 +97,8 @@ This document tangles four files that cooperate:
   It derives labels (via [[edumail labels]]), starts and stops
   [[nytid]] timers, and keeps state about which labels \emph{it}
   started.
-\item[\normalfont [[<<[[.muttrc.nymutt]]>>]] ]
-  installed as [[~/.muttrc.nymutt]] and sourced from [[~/.muttrc]]:
+\item[\normalfont [[<<[[.muttrc.nytid]]>>]] ]
+  installed as [[~/.muttrc.nytid]] and sourced from [[~/.muttrc]]:
   the macros and settings that wire the helper into [[mutt]].
 \item[\normalfont [[<<[[mutt.sh]]>>]] ]
   installed as [[~/bin/mutt]]:
@@ -566,7 +566,7 @@ silently advances to the next message, bypassing every macro below.
 With it, space stops at the end and moving on is always an explicit
 key we \emph{have} wrapped.
 The [[editor]] is the wrapper from \cref{EditorWrapper}.
-<<[[.muttrc.nymutt]]>>=
+<<[[.muttrc.nytid]]>>=
 set wait_key = no
 set pager_stop = yes
 set editor = "~/bin/nymutt editor"
@@ -584,7 +584,7 @@ message, just with full headers.
 Keys that merely move the index selection---tab
 ([[<next-new-then-unread>]]), [[j]]/[[k]], arrows---need no wrapping:
 no message is displayed, so no tracking should start.
-<<[[.muttrc.nymutt]]>>=
+<<[[.muttrc.nytid]]>>=
 macro index <return> \
   "<pipe-message>~/bin/nymutt open<enter><display-message>" \
   "track and read message"
@@ -604,7 +604,7 @@ macro index h \
 file ever feeds a stock mutt.)
 
 Leaving the pager for the index:
-<<[[.muttrc.nymutt]]>>=
+<<[[.muttrc.nytid]]>>=
 macro pager i "<shell-escape>~/bin/nymutt close<enter><exit>" \
   "untrack and exit pager"
 macro pager q "<shell-escape>~/bin/nymutt close<enter><exit>" \
@@ -629,7 +629,7 @@ mail),
 ([[<next-undeleted>]]/[[<previous-undeleted>]]),
 and the thread motions on control-N/P and escape-n/p.
 We wrap them all with the same tail.
-<<[[.muttrc.nymutt]]>>=
+<<[[.muttrc.nytid]]>>=
 macro pager J "<next-entry><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next message"
 macro pager K \
@@ -681,7 +681,7 @@ label that the next tab press corrects anyway.
 message with full headers, and the labels are already running.)
 
 Finally, adjusting the labels while reading (or from the index):
-<<[[.muttrc.nymutt]]>>=
+<<[[.muttrc.nytid]]>>=
 macro index,pager ,l "<shell-escape>~/bin/nymutt edit<enter>" \
   "edit tracking labels"
 @ Note there are no reply macros anywhere:
@@ -738,7 +738,7 @@ The helper script reads like this:
 \inputminted{bash}{nymutt.sh}
 
 And the [[mutt]] configuration:
-\inputminted{text}{.muttrc.nymutt}
+\inputminted{text}{.muttrc.nytid}
 
 \printbibliography{}
 
