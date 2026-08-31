@@ -1196,8 +1196,8 @@ answer a different question: which time-tracking labels does this email
 belong to?
 We track our working time with [[nytid track]], which tracks any number of
 concurrently running, free-form labels.
-The [[mutt-nytid]] integration (its own literate program,
-[[muttnytid.nw]], in this repository) starts labels when we open an email
+The [[nymutt]] integration (its own literate program,
+[[nymutt.nw]], in this repository) starts labels when we open an email
 in [[mutt]] and stops them when we return to the index.
 It delegates the parsing to the [[labels]] subcommand, so that all
 knowledge about what our emails look like stays in one place.
@@ -1238,7 +1238,7 @@ labels() {
 @ Duplicates are expected---a course both named and described by keywords,
 or several rules yielding the same label---so we deduplicate, and the
 sorted output doubles as a canonical form that callers can compare and
-diff against (which [[mutt-nytid]] does to keep timers running across
+diff against (which [[nymutt]] does to keep timers running across
 consecutive emails about the same course).
 
 \subsection{User-defined label rules}
@@ -1284,7 +1284,7 @@ labels_rules() {
   done < "${LABELS_RULES}"
 }
 @ A missing rules file is not an error:
-the course tests alone are a useful default, and [[mutt-nytid]] must keep
+the course tests alone are a useful default, and [[nymutt]] must keep
 working on a machine where no rules have been written yet.
 
 A comment line's first word starts with [[#]], and on a blank line
@@ -1346,7 +1346,7 @@ output = subprocess.run(["./edumail", "labels", "email2.txt"],
 print_verbatim(output.stdout)
 \end{pycode}
 An email matching neither a course test nor a rule yields nothing at all;
-it's the caller's job to fall back to something sensible---[[mutt-nytid]]
+it's the caller's job to fall back to something sensible---[[nymutt]]
 always adds a base [[email]] label of its own.
 
 

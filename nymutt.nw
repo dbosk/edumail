@@ -10,7 +10,7 @@
 \setjobnamebeamerversion{slides}
 
 \title{%
-  Tracking email time in mutt with nytid
+  nymutt: tracking email time in mutt with nytid
 }
 \author{%
   Daniel Bosk
@@ -91,14 +91,14 @@ For replies we use a different trick, described in
 
 This document tangles four files that cooperate:
 \begin{description}
-\item[\normalfont [[<<[[mutt-nytid.sh]]>>]] ]
-  installed as [[~/bin/mutt-nytid]]:
+\item[\normalfont [[<<[[nymutt.sh]]>>]] ]
+  installed as [[~/bin/nymutt]]:
   the helper script that [[mutt]] calls.
   It derives labels (via [[edumail labels]]), starts and stops
   [[nytid]] timers, and keeps state about which labels \emph{it}
   started.
-\item[\normalfont [[<<[[.muttrc.nytid]]>>]] ]
-  installed as [[~/.muttrc.nytid]] and sourced from [[~/.muttrc]]:
+\item[\normalfont [[<<[[.muttrc.nymutt]]>>]] ]
+  installed as [[~/.muttrc.nymutt]] and sourced from [[~/.muttrc]]:
   the macros and settings that wire the helper into [[mutt]].
 \item[\normalfont [[<<[[mutt.sh]]>>]] ]
   installed as [[~/bin/mutt]]:
@@ -112,17 +112,17 @@ This document tangles four files that cooperate:
 
 A reading session then works like this.
 Pressing return in the index pipes the message to
-[[mutt-nytid open]], which starts the derived labels, and then displays
+[[nymutt open]], which starts the derived labels, and then displays
 the message.
-Leaving the pager runs [[mutt-nytid close]], which stops them.
+Leaving the pager runs [[nymutt close]], which stops them.
 Moving to the next message from within the pager runs [[open]] again,
 which retargets the timers:
 labels shared with the previous email simply keep running.
 Replying opens the editor, which [[mutt]] is configured to reach
-through [[mutt-nytid editor]]---the wrapper tracks the [[replying]]
+through [[nymutt editor]]---the wrapper tracks the [[replying]]
 label for exactly as long as the editor runs.
 And when the mail client exits, the [[mutt]] wrapper calls
-[[mutt-nytid cleanup]] so no per-email timer can outlive the session.
+[[nymutt cleanup]] so no per-email timer can outlive the session.
 
 
 \section{The helper script}\label{TheHelperScript}
@@ -131,7 +131,7 @@ The script follows the same conventions as [[edumail]]:
 subcommands are functions, dispatched by a [[main]] that is skipped
 when the script is sourced, and functions that read a message accept a
 filename or fall back to stdin.
-<<[[mutt-nytid.sh]]>>=
+<<[[nymutt.sh]]>>=
 #!/bin/bash
 
 <<variables>>
@@ -190,11 +190,11 @@ Sorted, because the functions below compare label sets with [[comm]],
 which requires sorted input; keeping the file sorted at every write
 means we never have to remember to sort at the reads.
 The file lives in a per-session directory:
-the [[mutt]] wrapper exports [[MUTT_NYTID_SESSION]] (its process id),
+the [[mutt]] wrapper exports [[NYMUTT_SESSION]] (its process id),
 so two mail clients running at the same time keep separate books.
 <<variables>>=
-STATE_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/mutt-nytid"
-STATE_DIR="${STATE_DIR}/${MUTT_NYTID_SESSION:-default}"
+STATE_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/nymutt"
+STATE_DIR="${STATE_DIR}/${NYMUTT_SESSION:-default}"
 CURRENT="${STATE_DIR}/current"
 LAST_BATCH="${STATE_DIR}/last-batch"
 @
@@ -291,7 +291,7 @@ This is also the testing entry point, since it's the only subcommand
 with no side effects.
 Running it on [[edumail]]'s example emails:
 \begin{pycode}
-output = subprocess.run(["./mutt-nytid", "derive", "email1.txt"],
+output = subprocess.run(["./nymutt", "derive", "email1.txt"],
                         capture_output=True, env=demoenv)
 print_verbatim(output.stdout)
 \end{pycode}
@@ -566,10 +566,10 @@ silently advances to the next message, bypassing every macro below.
 With it, space stops at the end and moving on is always an explicit
 key we \emph{have} wrapped.
 The [[editor]] is the wrapper from \cref{EditorWrapper}.
-<<[[.muttrc.nytid]]>>=
+<<[[.muttrc.nymutt]]>>=
 set wait_key = no
 set pager_stop = yes
-set editor = "~/bin/mutt-nytid editor"
+set editor = "~/bin/nymutt editor"
 @
 
 Opening from the index:
@@ -584,30 +584,30 @@ message, just with full headers.
 Keys that merely move the index selection---tab
 ([[<next-new-then-unread>]]), [[j]]/[[k]], arrows---need no wrapping:
 no message is displayed, so no tracking should start.
-<<[[.muttrc.nytid]]>>=
+<<[[.muttrc.nymutt]]>>=
 macro index <return> \
-  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
   "track and read message"
 macro index <enter> \
-  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
   "track and read message"
 macro index <keypadenter> \
-  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
   "track and read message"
 macro index <space> \
-  "<pipe-message>~/bin/mutt-nytid open<enter><display-message>" \
+  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
   "track and read message"
 macro index h \
-  "<pipe-message>~/bin/mutt-nytid open<enter><display-toggle-weed>" \
+  "<pipe-message>~/bin/nymutt open<enter><display-toggle-weed>" \
   "track and read message with full headers"
 @ ([[<keypadenter>]] is a NeoMutt key name; delete that line if this
 file ever feeds a stock mutt.)
 
 Leaving the pager for the index:
-<<[[.muttrc.nytid]]>>=
-macro pager i "<shell-escape>~/bin/mutt-nytid close<enter><exit>" \
+<<[[.muttrc.nymutt]]>>=
+macro pager i "<shell-escape>~/bin/nymutt close<enter><exit>" \
   "untrack and exit pager"
-macro pager q "<shell-escape>~/bin/mutt-nytid close<enter><exit>" \
+macro pager q "<shell-escape>~/bin/nymutt close<enter><exit>" \
   "untrack and exit pager"
 @
 
@@ -629,44 +629,44 @@ mail),
 ([[<next-undeleted>]]/[[<previous-undeleted>]]),
 and the thread motions on control-N/P and escape-n/p.
 We wrap them all with the same tail.
-<<[[.muttrc.nytid]]>>=
-macro pager J "<next-entry><pipe-message>~/bin/mutt-nytid open<enter>" \
+<<[[.muttrc.nymutt]]>>=
+macro pager J "<next-entry><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next message"
 macro pager K \
-  "<previous-entry><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<previous-entry><pipe-message>~/bin/nymutt open<enter>" \
   "track and view previous message"
 macro pager <tab> \
-  "<next-new-then-unread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<next-new-then-unread><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next new message"
 macro pager j \
-  "<next-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<next-undeleted><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next undeleted message"
 macro pager <down> \
-  "<next-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<next-undeleted><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next undeleted message"
 macro pager <right> \
-  "<next-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<next-undeleted><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next undeleted message"
 macro pager k \
-  "<previous-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<previous-undeleted><pipe-message>~/bin/nymutt open<enter>" \
   "track and view previous undeleted message"
 macro pager <up> \
-  "<previous-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<previous-undeleted><pipe-message>~/bin/nymutt open<enter>" \
   "track and view previous undeleted message"
 macro pager <left> \
-  "<previous-undeleted><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<previous-undeleted><pipe-message>~/bin/nymutt open<enter>" \
   "track and view previous undeleted message"
 macro pager \Cn \
-  "<next-thread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<next-thread><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next thread"
 macro pager \Cp \
-  "<previous-thread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<previous-thread><pipe-message>~/bin/nymutt open<enter>" \
   "track and view previous thread"
 macro pager \en \
-  "<next-subthread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<next-subthread><pipe-message>~/bin/nymutt open<enter>" \
   "track and view next subthread"
 macro pager \ep \
-  "<previous-subthread><pipe-message>~/bin/mutt-nytid open<enter>" \
+  "<previous-subthread><pipe-message>~/bin/nymutt open<enter>" \
   "track and view previous subthread"
 @ One known leak remains:
 deleting with [[d]] auto-advances the pager (via [[resolve]]) without
@@ -681,8 +681,8 @@ label that the next tab press corrects anyway.
 message with full headers, and the labels are already running.)
 
 Finally, adjusting the labels while reading (or from the index):
-<<[[.muttrc.nytid]]>>=
-macro index,pager ,l "<shell-escape>~/bin/mutt-nytid edit<enter>" \
+<<[[.muttrc.nymutt]]>>=
+macro index,pager ,l "<shell-escape>~/bin/nymutt edit<enter>" \
   "edit tracking labels"
 @ Note there are no reply macros anywhere:
 reply tracking is entirely the editor wrapper's, by design
@@ -701,11 +701,11 @@ directory (\cref{TheHelperScript}).
 <<[[mutt.sh]]>>=
 #!/bin/sh
 NEOMUTT=/usr/bin/neomutt
-MUTT_NYTID_SESSION=$$
-export MUTT_NYTID_SESSION
+NYMUTT_SESSION=$$
+export NYMUTT_SESSION
 nytid track start mutt -- "$NEOMUTT" "$@"
 status=$?
-"$HOME/bin/mutt-nytid" cleanup
+"$HOME/bin/nymutt" cleanup
 exit $status
 @ The [[mutt]] session label itself still needs no cleanup here:
 [[nytid]]'s launch mechanism stops it when [[neomutt]] exits, exactly
@@ -735,10 +735,10 @@ from:.*@ug\.kth\.se     admin
 \section{The scripts as a whole}
 
 The helper script reads like this:
-\inputminted{bash}{mutt-nytid.sh}
+\inputminted{bash}{nymutt.sh}
 
 And the [[mutt]] configuration:
-\inputminted{text}{.muttrc.nytid}
+\inputminted{text}{.muttrc.nymutt}
 
 \printbibliography{}
 

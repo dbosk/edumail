@@ -1,5 +1,5 @@
 .PHONY: all
-all: edumail.pdf muttnytid.pdf
+all: edumail.pdf nymutt.pdf
 
 LATEXFLAGS+=	-shell-escape
 
@@ -9,28 +9,28 @@ edumail.pdf: edumail
 
 edumail.tex: edumail.nw noweb_lexer.py
 
-muttnytid.pdf: muttnytid.tex didactic.sty
-muttnytid.pdf: preamble.tex
-muttnytid.pdf: mutt-nytid edumail .muttrc.nytid
+nymutt.pdf: nymutt.tex didactic.sty
+nymutt.pdf: preamble.tex
+nymutt.pdf: nymutt edumail .muttrc.nymutt
 
-muttnytid.tex: muttnytid.nw noweb_lexer.py
+nymutt.tex: nymutt.nw noweb_lexer.py
 
 
 .PHONY:
-all: edumail mutt-nytid mutt .muttrc.nytid labels.rules
+all: edumail nymutt mutt .muttrc.nymutt labels.rules
 
 edumail.sh: edumail.nw
 edumail: edumail.sh
 	cp $^ $@
 	chmod +x $@
 
-mutt-nytid.sh mutt.sh: muttnytid.nw
+nymutt.sh mutt.sh: nymutt.nw
 	${NOTANGLE.sh}
 
-.muttrc.nytid labels.rules: muttnytid.nw
+.muttrc.nymutt labels.rules: nymutt.nw
 	${NOTANGLE.sh}
 
-mutt-nytid: mutt-nytid.sh
+nymutt: nymutt.sh
 	cp $^ $@
 	chmod +x $@
 
@@ -42,15 +42,15 @@ mutt: mutt.sh
 .PHONY: clean
 clean:
 	${RM} edumail edumail.sh edumail.pdf edumail.tex
-	${RM} mutt-nytid mutt-nytid.sh mutt mutt.sh
-	${RM} .muttrc.nytid labels.rules muttnytid.pdf muttnytid.tex
+	${RM} nymutt nymutt.sh mutt mutt.sh
+	${RM} .muttrc.nymutt labels.rules nymutt.pdf nymutt.tex
 
 
 .PHONY: install
 PREFIX=${HOME}
-install: edumail mutt-nytid mutt .muttrc.nytid labels.rules
-	install -m 755 edumail mutt-nytid mutt ${PREFIX}/bin
-	install -m 644 .muttrc.nytid ${HOME}/.muttrc.nytid
+install: edumail nymutt mutt .muttrc.nymutt labels.rules
+	install -m 755 edumail nymutt mutt ${PREFIX}/bin
+	install -m 644 .muttrc.nymutt ${HOME}/.muttrc.nymutt
 	mkdir -p ${HOME}/.config/edumail
 	[ -e ${HOME}/.config/edumail/labels.rules ] \
 	  || install -m 644 labels.rules ${HOME}/.config/edumail/labels.rules
