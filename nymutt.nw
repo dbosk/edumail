@@ -28,8 +28,8 @@
   We want that tracking to be automatic while reading email:
   when we open an email in [[mutt]], labels derived from the email
   (course, sender, keywords) should start; when we return to the index,
-  they should stop; while we write a reply, a [[replying]] label should
-  run.
+  they should stop; while we write email---a reply or a fresh
+  message---a [[writing]] label should run.
   [[mutt]] has no hooks for leaving the pager or finishing a reply, so we
   build the integration from macro-wrapped key bindings, an editor
   wrapper, and a small state-keeping helper script.
@@ -118,9 +118,10 @@ Leaving the pager runs [[nymutt close]], which stops them.
 Moving to the next message from within the pager runs [[open]] again,
 which retargets the timers:
 labels shared with the previous email simply keep running.
-Replying opens the editor, which [[mutt]] is configured to reach
-through [[nymutt editor]]---the wrapper tracks the [[replying]]
-label for exactly as long as the editor runs.
+Replying---or composing a fresh message---opens the editor, which
+[[mutt]] is configured to reach through [[nymutt editor]]---the
+wrapper tracks the [[writing]] label for exactly as long as the
+editor runs.
 And when the mail client exits, the [[mutt]] wrapper calls
 [[nymutt cleanup]] so no per-email timer can outlive the session.
 
@@ -334,7 +335,7 @@ close() {
 }
 @
 
-\subsection{Replying: the editor wrapper}\label{EditorWrapper}
+\subsection{Writing: the editor wrapper}\label{EditorWrapper}
 
 There is no way to run a command when a reply is finished:
 [[mutt]] has no such hook, and a macro cannot help either---any keys
@@ -355,6 +356,10 @@ labels the moment the editor exits.
 One mechanism covers reply, group-reply, list-reply, forward, fresh
 compose, and---because an aborted reply also exits the editor---aborts
 too.
+That breadth also names the label:
+a fresh message runs this same wrapper, so calling the label
+[[replying]] would mislabel it; [[writing]] is what all these cases
+have in common.
 <<functions>>=
 editor() {
   local real_editor="${VISUAL:-${EDITOR:-vi}}"
@@ -362,7 +367,7 @@ editor() {
     exec "${real_editor}" "$@"
   fi
   local labels
-  labels=$( (derive "$1"; echo replying) | sort -u \
+  labels=$( (derive "$1"; echo writing) | sort -u \
             | comm -23 - <(active_labels) )
   if [[ -z "${labels}" ]]; then
     exec "${real_editor}" "$@"
@@ -384,8 +389,8 @@ The alternatives it offers would both steal the pager's timers
 at editor exit), so we do the third thing:
 subtract everything already active and launch only the rest.
 The pager's timers then run untouched through the reply and are stopped
-by [[close]] as usual, while the reply-only labels---normally just
-[[replying]]---stop with the editor.
+by [[close]] as usual, while the editor-only labels---normally just
+[[writing]]---stop with the editor.
 We deliberately do \emph{not} record the launched labels in
 [[current]]:
 [[nytid]] stops them itself, and double bookkeeping would have
@@ -395,7 +400,7 @@ additionally visible under [[vim]]; that comes free with the launch
 mechanism.)
 
 Third, if the subtraction leaves nothing (essentially impossible, since
-[[replying]] is not otherwise used), we must run the editor plainly:
+[[writing]] is not otherwise used), we must run the editor plainly:
 [[nytid track start]] with \emph{no} labels means \enquote{resume the
 last-stopped labels}, which is never what a reply should do.
 
