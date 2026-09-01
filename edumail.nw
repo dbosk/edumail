@@ -1488,9 +1488,13 @@ in this script is fine.
 Label rules are different: a new mailing list, an administrative sender, a
 committee---these appear all the time, and the person adding them is in
 their mail client, not in this repository rebuilding the script.
-So the remaining rules live in a configuration file,
+So the remaining rules live in a configuration file, whose location
+can be overridden from the environment---to try a rules file before
+installing it, and for [[nymutt]]'s documentation to demonstrate its
+seed rules without touching the author's own file,
 <<variables>>=
-LABELS_RULES="${XDG_CONFIG_HOME:-$HOME/.config}/edumail/labels.rules"
+DEFAULT_RULES="${XDG_CONFIG_HOME:-$HOME/.config}/edumail/labels.rules"
+LABELS_RULES="${LABELS_RULES:-${DEFAULT_RULES}}"
 @ with one rule per line:
 a pattern, whitespace, and the labels that pattern maps to.
 A [[#]] starts a comment.
