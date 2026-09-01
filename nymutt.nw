@@ -106,8 +106,9 @@ This document tangles four files that cooperate:
   mail client exits.
 \item[\normalfont [[<<[[labels.rules]]>>]] ]
   installed as [[~/.config/edumail/labels.rules]] (only if absent):
-  seed rules for [[edumail labels]], see the edumail documentation for
-  the format.
+  seed rules for [[edumail labels]], translated from the author's
+  [[mutt]] scoring rules (\cref{SeedRules}); see the edumail
+  documentation for the format.
 \end{description}
 
 A reading session then works like this.
@@ -717,12 +718,59 @@ exit $status
 as before.
 
 
-\section{Seed rules}
+\section{Seed rules}\label{SeedRules}
 
 The rules file format is documented with [[edumail labels]]; this seed
 only has to get a user started.
 It is installed only when no rules file exists yet, so it never
 overwrites rules the user has written.
+
+Rather than invent a starting set, we translate one that already exists:
+the author's [[mutt]] scoring rules ([[~/.muttrc.scores]]).
+Scoring answers \enquote{how important is this email?} and a label rule
+answers \enquote{what is this email about?}, but both are decided on the
+same evidence---who sent it and what the subject says---and the scoring
+file is where years of that judgement have accumulated.
+What a score line lacks is a \emph{name} for the thing it recognises, so
+the translation is done by hand, once, rather than by a script.
+The mechanical part is small:
+[[~s]] becomes [[subject:]], [[mutt]]'s [[\|]] alternation becomes PCRE
+[[|]], and spaces inside patterns become [[\s]] because the rules format
+splits on whitespace.
+[[~f]] is the interesting one.
+The rules format has a [[from:]] prefix, but we mostly do \emph{not} use
+it, because the rules must also work when we \emph{write}:
+the editor wrapper (\cref{EditorWrapper}) derives labels from the draft,
+and there the [[From:]] line is us and the person we care about is in
+[[To:]] or [[Cc:]].
+An unprefixed pattern matches anywhere in the cleaned email, and
+[[edumail]]'s [[clean]] keeps the recipient lines, so one such rule
+covers reading and writing alike.
+The semantics shift from [[mutt]]'s \enquote{sent by} to \enquote{a
+party to}, which is what time tracking wants anyway:
+writing to a teaching assistant is TA work too.
+The same holds for [[mutt]]'s own recipient patterns ([[~t]], [[~c]]).
+
+One difference is easy to miss.
+[[mutt]] matches case-insensitively \emph{unless} the pattern contains an
+upper-case letter, so [[~s TA]] finds teaching assistants but not the
+Swedish verb \enquote{ta}, which opens half of all Swedish subject lines.
+[[edumail]] always greps with [[-i]], so a naive translation would put
+[[TA-management]] on most of the inbox.
+PCRE lets a group opt out of the outer flag, [[(?-i:...)]], and every
+all-caps token below (TA, CSN, LAB1, the programme codes, the learned
+societies) is wrapped that way.
+
+Not everything in the scoring file names a topic.
+Rules on age, flags and urgency words rank emails without saying what
+they are about, and domain-wide rules (anything from a Swedish
+university) would put a label on nearly every email; both kinds are left
+out.
+So are the courses that [[edumail labels]] already recognises by keyword
+(programming, datintro, crypto, science):
+the seed only adds the courses it does not.
+
+The file opens with the format reminder from the original one-line seed.
 <<[[labels.rules]]>>=
 # Rules mapping email patterns to nytid time-tracking labels,
 # read by `edumail labels` (see edumail.pdf for the format).
@@ -732,8 +780,198 @@ overwrites rules the user has written.
 # field is from, subject or any (the default: anywhere in the
 # cleaned email).  Patterns are case-insensitive Perl regexes and
 # cannot contain whitespace; use \s instead.
+@
 
-from:.*@ug\.kth\.se     admin
+\subsection{People}
+
+Senders are the bulk of the scoring file and pose the first design
+choice: one label per person, or one per role?
+A per-person label is precise but grows the label set with every new
+contact, and the sum we want at the end of a period is \enquote{time on
+TA matters}, not \enquote{time on email from X}.
+So people map to a handful of roles---[[admin]], [[colleague]],
+[[TA-management]], [[research]]---and someone of interest in two
+respects gets two labels, such as [[colleague CSE]] for a colleague who is
+also in computing-education research.
+
+The patterns match names, not addresses.
+A name is what the header lines show, and it survives the address
+changes (department subdomains, private addresses) that the scoring file
+had to enumerate.
+Functional senders---scheduling, support desks, programme
+administrators---have no name and keep their addresses.
+None of these rules carries a [[from:]] prefix, so they fire for a
+person in [[To:]] or [[Cc:]] as well as in [[From:]]---and, in the
+bargain, for a full name mentioned in the body.
+We accept the latter:
+an email that talks about a colleague by full name is usually about that
+colleague's matter, and the names are long enough not to occur by
+accident.
+Where the scoring file had only a username, the name came from
+[[kthutils ug user <username>]], which is also how to extend the list.
+<<[[labels.rules]]>>=
+# administration and support
+.*@ug\.kth\.se                                      admin
+schema@admin\.kth\.se                               schedule admin
+@timeedit\.com                                      schedule admin
+education-support@eecs\.kth\.se                     admin examination
+service@eecs\.kth\.se                               admin
+(student-support|hr-support)@eecs\.kth\.se          admin
+pa-.*@.*\.kth\.se                                   admin
+Anna\sOlanås\sJansson                               admin hr
+Hanna\sHolmqvist                                    admin hr
+it-support@kth\.se                                  it
+subject:ID:KTH-INC                                  admin
+e-learning@kth\.se                                  canvas admin
+teachers@(.*\.)?kth\.se                             mailinglist
+@indek\.kth\.se                                     indek
+subject:(kompletterande\s|I-)perspektiv|indek|I-student  indek
+@
+
+Each colleague gets a line of their own rather than a place in one long
+alternation, so that a single line can be deleted or relabelled when
+someone changes role.
+<<[[labels.rules]]>>=
+# colleagues
+Viggo\sKann                                         colleague
+Karl\sMeinke                                        colleague
+Anna-Karin\sHögfeldt                                colleague
+Sonja\sBuchegger                                    colleague
+Gerald.*Maguire                                     colleague
+Richard.*Glassey                                    colleague
+Ol(le|of)\sB[äa]lter                                colleague
+Linda\sKann                                         colleague
+Martin\sMonperrus                                   colleague
+Emma\sRiese                                         colleague
+Camilla\sBjörn                                      colleague
+Leif\sKari                                          colleague
+Mats\sNäslund                                       colleague
+Alexander\sBaltazis                                 colleague
+Olga\sViberg                                        colleague CSE
+OB1|Bälter                                          colleague CSE
+Glassey                                             colleague CSE
+Antonio\sMaffei                                     colleague
+Jan-Erik\sJonsson                                   colleague
+Lennart\sFranked                                    colleague
+Martin\sKjellqvist                                  colleague
+# research contacts
+Mathieu\sGestin                                     research security
+Davide\sFrey                                        research security
+Guillaume\sPiolle                                   research security
+Laurie\sGale                                        research CSE
+Francisco\sGomes                                    research CSE
+Bedour\sAlshaigy                                    research CSE
+Johan\sSnider                                       colleague CSE
+Simone\sFischer-H(ü|ue)bner                         swits research security
+subject:swits                                       swits research security
+@
+
+\subsection{Courses}
+
+[[edumail labels]] emits every course code that appears literally in an
+email, so a rule keyed on a code alone would be redundant.
+The course rules below exist for the nicknames and module names students
+use instead of codes ([[inda]], [[tilda]], [[exjobb]]), and they emit
+the same year-free nicknames as [[edumail]]'s built-in tests, so time on
+a course accumulates under one label however the student refers to it.
+Students rarely write a telling subject line, so these rules are not
+restricted to the subject; they match the body too, like [[edumail]]'s
+built-in course tests.
+The price of searching the body is that short stems need word
+boundaries: [[inda]] is inside \enquote{individuell}, and [[tilda]] is
+anchored the same way for consistency.
+Thesis work gets a [[supervision]] label on top of the course, because
+supervision is what we sum up separately from teaching.
+Assignment groups ([[LAB1]], [[INL1]]) need no rules either:
+[[edumail labels]] emits them itself.
+The one module rule left maps the Excel and mathematics modules of the
+programming course to the course, since a student writing about
+[[KAL1]] alone has not named it.
+<<[[labels.rules]]>>=
+# courses beyond the ones edumail recognises by keyword
+DD1337|\binda\b                                     inda
+DD1320|\btilda[vh]?\b                               tilda
+DD139[01]|prosam                                    prosam
+DA150X|dkex|dkand|kex-?jobb|kandidat                dkand supervision
+bachelor.*thesis                                    dkand supervision
+DA231X|exjobb|master.*thesis                        exjobb supervision
+(?-i:\b(KAL1|MAT1)\b)                               prgi
+(?-i:\b(CINEK|CMAST|CITEH|CDATE)\b)                 programme
+(?-i:\b(CFATE|CTMAT|CTFYS|CLGYM)\b)                 programme
+@
+
+\subsection{Topics}
+
+The topic rules reuse the labels we already track by hand---[[grading]],
+[[ladok]], [[restlabb]], [[TA-management]], [[reporting]],
+[[meeting]]---so that email time lands in the same buckets as the rest
+of the work on that topic.
+Several rules carry two labels for the same reason:
+a timesheet from a TA is both [[reporting]] and [[TA-management]], and
+the concurrent-label model costs nothing for saying so.
+The grading-related rules (Ladok, grades, resubmissions, examination,
+credit transfer, CSN) are unprefixed for the same reason as the course
+rules: they come from students, who put the matter in the body.
+Here too the body forces a tighter pattern:
+[[rester]] alone would match the everyday \enquote{resterande}, so
+resubmissions are [[rest(er\b|labb|uppgift|inlämn)]].
+The remaining topics keep the [[subject:]] prefix; words like
+\enquote{timmar}, \enquote{sjuk} or \enquote{fråga} are far too common
+in running text to be labels on their own.
+<<[[labels.rules]]>>=
+# topics
+subject:ti[dm]s?(rapport|ersättning)|time\s?sheet   reporting TA-management
+subject:lön|timmar|arvode                           reporting TA-management
+subject:\b(assning|asse|assistent)\b|(?-i:\bTA\b)   TA-management
+ladok|betyg                                         ladok grading examination
+kompletter(a|ing)|rätt(ad?|ning)                    grading examination
+redovis(a|ning)                                     grading examination
+examin(era|ation)                                   examination
+\brest(er\b|labb|uppgift|inlämn)                    restlabb examination
+(?-i:\bCSN\b)                                       csn examination
+tillgodoräk                                         tillgodo admin
+subject:kurs-?(analys|pm|(ut)?värdering)            course-admin
+subject:TEL.(meeting|möte)                          tel meeting
+subject:cerise                                      cerise
+subject:cron.*dbosk@rpi                             admin scripts
+from:Calendly                                       meeting
+subject:receipt\sfrom\sAnthropic                    expenses admin
+subject:(reviewer.*invitation|invitation.*reviewer) reviewing research
+from:KTH\sSurvey                                    survey
+@
+
+Notification streams from tools are labelled by the tool, since the
+tool usually implies the activity: Canvas and FeedbackFruits mean
+teaching, GitHub means development, Urkund means grading.
+<<[[labels.rules]]>>=
+# tools and notification streams
+from:Canvas|notifications@instructure\.com          canvas
+from:feedbackfruits                                 feedbackfruits canvas
+from:GitHub|notifications@github\.com               devel
+from:Zulip                                          zulip
+from:noreply@urkund\.se                             urkund grading
+subject:SIGCSE-members                              mailinglist CSE
+@
+
+\subsection{Newsletters}
+
+The scoring file ends with what it pushes \emph{down}: newsletters,
+alerts and society mailings.
+Skimming them still costs time, so they get a label rather than none,
+and the digests that feed literature awareness get [[research]] too, so
+that this time is counted where it belongs.
+The society acronyms are matched case-sensitively; [[acm]] and
+[[sans]] are substrings of too many names.
+<<[[labels.rules]]>>=
+# newsletters and digests
+from:Google\sScholar|Springer\sAlert|ScienceDirect  newsletter research
+from:Nature\sBriefing|News\sfrom\sScience           newsletter research
+subject:Aktuell\shögskolepedagogisk\sforskning      newsletter research
+from:ACM\sDigital\sLibrary|Xplore                   newsletter research
+from:(?-i:\b(IEEE|ACM|SIAM)\b)                      newsletter research
+from:The\sDownload|Times\sHigher\sEducation         newsletter
+from:(?-i:\bSANS\b)|EIT\sDigital                    newsletter
+from:KTH\s(Magazine|Opportunities\sFund|Alumni)     newsletter
 @
 
 
