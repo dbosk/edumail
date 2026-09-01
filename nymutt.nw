@@ -56,7 +56,8 @@ def print_verbatim(output):
 
 demoenv = dict(os.environ,
                EDUMAIL="./edumail",
-               XDG_CONFIG_HOME="/nonexistent")
+               XDG_CONFIG_HOME="/nonexistent",
+               LABELS_RULES="labels.rules")
 \end{pycode}
 
 @
@@ -291,14 +292,36 @@ derive() {
 
 This is also the testing entry point, since it's the only subcommand
 with no side effects.
-Running it on [[edumail]]'s example emails:
+Running it on [[edumail]]'s example emails, with the seed rules from
+\cref{SeedRules} as the rules file (we point [[XDG_CONFIG_HOME]] away
+from the author's personal rules file and [[LABELS_RULES]] at the file
+tangled from this document):
 \begin{pycode}
 output = subprocess.run(["./nymutt", "derive", "email1.txt"],
                         capture_output=True, env=demoenv)
 print_verbatim(output.stdout)
 \end{pycode}
-(As in the [[edumail]] documentation, we point [[XDG_CONFIG_HOME]] away
-from the author's personal rules file when compiling this document.)
+Here [[edumail]] contributes [[prgi]]; the seed rules add [[restlabb]],
+[[examination]] and [[ladok]] from the student's words (\enquote{restlabb},
+\enquote{redovisade}, \enquote{Ladok}).
+The fourth example, a student who names the course and asks about a
+missing grade, works the same way:
+\begin{pycode}
+output = subprocess.run(["./nymutt", "derive", "email4.txt"],
+                        capture_output=True, env=demoenv)
+print_verbatim(output.stdout)
+\end{pycode}
+The fifth is an application to become a teaching assistant.
+[[edumail]] recognizes it as such and then leaves out the module-level
+labels, its own assignment groups as well as the rules'
+[[examination]]---the applicant's \enquote{rättade} would otherwise
+have matched---while a course the rules know ([[tilda]], from DD1320 in
+the applicant's experience) is kept:
+\begin{pycode}
+output = subprocess.run(["./nymutt", "derive", "email5.txt"],
+                        capture_output=True, env=demoenv)
+print_verbatim(output.stdout)
+\end{pycode}
 
 \subsection{Opening an email}
 

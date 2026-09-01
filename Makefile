@@ -12,7 +12,7 @@ edumail.tex: edumail.nw noweb_lexer.py
 
 nymutt.pdf: nymutt.tex didactic.sty
 nymutt.pdf: preamble.tex
-nymutt.pdf: nymutt edumail .muttrc.nytid
+nymutt.pdf: nymutt edumail .muttrc.nytid labels.rules
 
 nymutt.tex: nymutt.nw noweb_lexer.py
 
