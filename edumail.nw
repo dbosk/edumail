@@ -471,11 +471,50 @@ The [[course]] function calls [[course_code]] and [[course_nick]] to extract
 the course code and course nick name, respectively.
 Their outputs are just concatenated.
 
+Both functions rely on the same knowledge of which keywords indicate which 
+course; they differ only in what they print for it, a code or a nick name.
+So we keep that knowledge in one place, [[course_families]], and let both 
+derive their output from it.
+It prints one \emph{family} per line:
+the courses that share keywords, and that we therefore cannot tell apart from 
+the text of an email---[[prgm]] (DD1310) and [[prgi]] (DD1317) being the 
+typical pair.
+Members are named by nick name, the shorter and more stable of the two names.
+<<functions>>=
+course_families() {
+  local file=$(file_or_stdin "$1")
+  if <<test for datintro terms>>; then
+    echo "datintro progd"
+  fi
+  if <<test for programming terms>>; then
+    echo "prgm prgi"
+  fi
+  if <<test for crypto terms>>; then
+    echo "tilkry"
+  fi
+  if <<test for science terms>>; then
+    echo "vetcyb"
+  fi
+}
+@ Note that we don't use [[elif]]: a student might write about several courses 
+in one email.
+
+The course code of each nick name is a table.
+<<variables>>=
+declare -A COURSE_CODES=(
+  [datintro]=DD1301 [progd]=DD1337
+  [prgm]=DD1310     [prgi]=DD1317
+  [tilkry]=DD2520
+  [vetcyb]=DA2215
+)
+@
+
 The [[course_code]] function will look for the course code in the email.
 If it finds something that looks like a course code, it will return it 
 (printing it to stdout).
-Then it will look for keywords in the email that indicate which course it is, 
-then output the course code for that course.
+Then it adds the codes of every course whose keywords occur in the email; 
+the unquoted [[$(course_families ...)]] splits the families into their 
+members.
 Since many might match, we sort the output and remove duplicates.
 Finally, we make a disjunct regex from the output.
 <<functions>>=
@@ -484,20 +523,9 @@ course_code() {
   (
     clean "$file" \
     | grep -Po "${COURSE_CODE}"
-    if <<test for datintro terms>>; then
-      echo "DD1301"
-      echo "DD1337"
-    fi
-    if <<test for programming terms>>; then
-      echo "DD1310"
-      echo "DD1317"
-    fi
-    if <<test for crypto terms>>; then
-      echo "DD2520"
-    fi
-    if <<test for science terms>>; then
-      echo "DA2215"
-    fi
+    for nick in $(course_families "$file"); do
+      echo "${COURSE_CODES[$nick]}"
+    done
   ) | sort -u \
     | make_disjunct_regex
 }
@@ -517,26 +545,17 @@ print_verbatim(output.stdout)
 
 The [[course_nick]] function will do exactly the same, but look for the course 
 nick name in the email and output a nickname instead.
+A nick name found by keywords gets the recent-years suffix, since we're 
+guessing the course round the student means (see above).
 <<functions>>=
 course_nick() {
   local file=$(file_or_stdin "$1")
   (
     clean "$file" \
     | grep -Po "${COURSE_NICK}"
-    if <<test for datintro terms>>; then
-      echo "datintro${YEARS_REGEX}"
-      echo "progd${YEARS_REGEX}"
-    fi
-    if <<test for programming terms>>; then
-      echo "prgm${YEARS_REGEX}"
-      echo "prgi${YEARS_REGEX}"
-    fi
-    if <<test for crypto terms>>; then
-      echo "tilkry${YEARS_REGEX}"
-    fi
-    if <<test for science terms>>; then
-      echo "vetcyb${YEARS_REGEX}"
-    fi
+    for nick in $(course_families "$file"); do
+      echo "${nick}${YEARS_REGEX}"
+    done
   ) | sort -u \
     | make_disjunct_regex
 }
@@ -713,7 +732,11 @@ in the email.
 We note that we must not match the course code, since those also fit the 
 pattern in [[ASSIGNMENT_GROUP]], so we remove anything that also match a course 
 code.
+The keyword tests below are course specific, so we also determine the course 
+here---once, since [[course]] is the expensive part of this script and the 
+tests below would otherwise each run it again.
 <<find assignment groups in [[file]]>>=
+local courses=$(course "$file")
 clean "$file" \
 | grep -Po "${ASSIGNMENT_GROUP}" \
 | grep -Pv "${COURSE_CODE}"
@@ -726,12 +749,12 @@ group, so we can reuse the tests from above.
 However, a keyword in one course might indicate a different assignment group in 
 another course, so we'd better make these course specific.
 <<find assignment groups in [[file]]>>=
-if course "$file" | grep -qP "(DD13(01|37)|datintro)"; then
+if grep -qP "(DD13(01|37)|datintro)" <<< "${courses}"; then
   if <<test for datintro terms>>; then
     echo "LAB1"
   fi
 fi
-if course "$file" | grep -qP "(DA2215|vetcyb)"; then
+if grep -qP "(DA2215|vetcyb)" <<< "${courses}"; then
   if <<test for science terms>>; then
     echo "INL1"
   fi
@@ -742,7 +765,7 @@ in one email.
 For the other courses we must be more specific, since they have different 
 modules corresponding to different assignments.
 <<find assignment groups in [[file]]>>=
-if course "$file" | grep -qP "(DD131[07]|prg[im])"; then
+if grep -qP "(DD131[07]|prg[im])" <<< "${courses}"; then
   if <<test for programming LAB1 terms>>; then
     echo "LAB1"
   fi
@@ -756,7 +779,7 @@ if course "$file" | grep -qP "(DD131[07]|prg[im])"; then
     echo "KAL1"
   fi
 fi
-if course "$file" | grep -qP "(DD2520|tilkry)"; then
+if grep -qP "(DD2520|tilkry)" <<< "${courses}"; then
   if <<test for tilkry LAB1 terms>>; then
     echo "LAB1"
   fi
@@ -1206,32 +1229,46 @@ Where the results subcommands output regexes---they need to \emph{match}
 course rounds like [[prgi23]]---time tracking needs stable \emph{names}.
 A label is an identity that accumulates time across years, so we output
 the course nick without any year suffix ([[tilkry]], not
-[[tilkry(24|25|26)]]).
-For the same reason we output one label per course family rather than the
-code pairs the results subcommands use:
-[[prgm]] covers both DD1310 and DD1317, whose emails we cannot tell apart
-anyway.
-Course codes that appear \emph{literally} in the email are still worth
-emitting: the student told us exactly which course they mean, and a code
-is a stable name.
+[[tilkry(24|25|26)]]), and we strip the year from a nick the student
+wrote ([[prgi23]] becomes [[prgi]]).
+We also prefer the nick to the code even when the student wrote the code:
+[[prgi]] rather than [[DD1317]], so that the time lands under the one
+name we use for the course everywhere else in [[nytid]].
+That translation is the [[COURSE_CODES]] table read backwards; a code the
+table doesn't know is a stable name in its own right and passes through
+unchanged (a user's rules file can then map it, see below).
+<<functions>>=
+nick_of_course_code() {
+  local code="${1^^}" nick
+  for nick in "${!COURSE_CODES[@]}"; do
+    if [[ "${COURSE_CODES[$nick]}" == "${code}" ]]; then
+      echo "${nick}"
+      return
+    fi
+  done
+  echo "${code}"
+}
+@
+
+The families pose a choice.
+When only keywords identify the course, we cannot tell [[prgm]] from
+[[prgi]] and we output both; the concurrent-label model makes that cheap,
+and the sum for either course is still right---and old students of
+[[prgm]] do still write.
+But when the email names a member of the family by code, we output only
+that member:
+a student who writes DD1317 has told us which course they mean, and a
+[[prgm]] label would only be noise.
+Assignment groups are labels too---[[INL1]] and [[LAB2]] are what we
+already track by hand---so we reuse the search from [[assignment_groups]],
+but not the default it falls back on:
+a label must name something the email actually mentions.
 <<functions>>=
 labels() {
   local file=$(file_or_stdin "$1")
   (
-    clean "$file" \
-    | grep -Po "${COURSE_CODE}"
-    if <<test for datintro terms>>; then
-      echo "datintro"
-    fi
-    if <<test for programming terms>>; then
-      echo "prgm"
-    fi
-    if <<test for crypto terms>>; then
-      echo "tilkry"
-    fi
-    if <<test for science terms>>; then
-      echo "vetcyb"
-    fi
+    <<emit one label per course>>
+    <<find assignment groups in [[file]]>>
     labels_rules "$file"
   ) | sort -u
 }
@@ -1240,6 +1277,30 @@ or several rules yielding the same label---so we deduplicate, and the
 sorted output doubles as a canonical form that callers can compare and
 diff against (which [[nymutt]] does to keep timers running across
 consecutive emails about the same course).
+
+The course labels come from three places:
+the families whose keywords match, narrowed by any codes in the email;
+the codes themselves, translated; and the nicks the student wrote, with
+the year removed.
+The [[grep -x]] against the (upper-cased) code list is how a family
+member counts as named; [[${named:-${family}}]] then falls back to the
+whole family when no member was.
+<<emit one label per course>>=
+local codes=$(clean "$file" | grep -Po "${COURSE_CODE}" \
+              | tr '[:lower:]' '[:upper:]' | sort -u)
+local family named nick code
+while read -r family; do
+  named=""
+  for nick in ${family}; do
+    grep -qx "${COURSE_CODES[$nick]}" <<< "${codes}" && named+=" ${nick}"
+  done
+  printf '%s\n' ${named:-${family}}
+done < <(course_families "$file")
+for code in ${codes}; do
+  nick_of_course_code "${code}"
+done
+clean "$file" | grep -Po "${COURSE_NICK}" | sed -E 's/[0-9]{2}$//'
+@
 
 \subsection{User-defined label rules}
 
@@ -1328,8 +1389,8 @@ esac | grep -qiP "${pattern}" \
 Let's run [[labels]] on the example emails.
 (We point [[XDG_CONFIG_HOME]] at a nonexistent directory so the author's
 personal rules file doesn't leak into this document.)
-\Cref{email1} mentions the programming course by code and by keywords, so
-it yields:
+\Cref{email1} mentions the programming course by code (DD1317) and by
+keywords, so the family collapses to the one course named:
 \begin{pycode}
 import os
 norules = dict(os.environ, XDG_CONFIG_HOME="/nonexistent")
@@ -1339,7 +1400,7 @@ print_verbatim(output.stdout)
 \end{pycode}
 \Cref{email2} never names a course, but its subject
 (\enquote{Projektgranskning}) hits the programming courses' keyword test,
-so the email is still labelled:
+so the email gets the whole family---and the project's assignment group:
 \begin{pycode}
 output = subprocess.run(["./edumail", "labels", "email2.txt"],
                         capture_output=True, env=norules)
