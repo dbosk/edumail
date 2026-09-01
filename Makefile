@@ -2,6 +2,7 @@
 all: edumail.pdf nymutt.pdf
 
 LATEXFLAGS+=	-shell-escape
+TEX_PYTHONTEX=	yes
 
 edumail.pdf: edumail.tex didactic.sty
 edumail.pdf: abstract.tex preamble.tex
