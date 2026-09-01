@@ -758,8 +758,9 @@ Swedish verb \enquote{ta}, which opens half of all Swedish subject lines.
 [[edumail]] always greps with [[-i]], so a naive translation would put
 [[TA-management]] on most of the inbox.
 PCRE lets a group opt out of the outer flag, [[(?-i:...)]], and every
-all-caps token below (TA, CSN, LAB1, the programme codes, the learned
-societies) is wrapped that way.
+all-caps token below (CSN, KAL1, the programme codes, the learned
+societies) is wrapped that way---as is the TA in [[edumail]]'s own
+assistant test, where that rule now lives (see below).
 
 Not everything in the scoring file names a topic.
 Rules on age, flags and urgency words rank emails without saying what
@@ -767,8 +768,10 @@ they are about, and domain-wide rules (anything from a Swedish
 university) would put a label on nearly every email; both kinds are left
 out.
 So are the courses that [[edumail labels]] already recognises by keyword
-(programming, datintro, crypto, science):
-the seed only adds the courses it does not.
+(programming, datintro, crypto, science), and mail about teaching
+assistants, which it recognises itself so that it can leave the module
+labels out of such mail:
+the seed only adds what it does not.
 
 The file opens with the format reminder from the original one-line seed.
 <<[[labels.rules]]>>=
@@ -909,6 +912,10 @@ of the work on that topic.
 Several rules carry two labels for the same reason:
 a timesheet from a TA is both [[reporting]] and [[TA-management]], and
 the concurrent-label model costs nothing for saying so.
+The [[TA-management]] label is spelled as [[edumail]] spells it, since
+[[edumail]] emits it itself for mail about teaching assistants; the
+rules here only add the cases it can't see, timesheets and pay.
+
 The grading-related rules (Ladok, grades, resubmissions, examination,
 credit transfer, CSN) are unprefixed for the same reason as the course
 rules: they come from students, who put the matter in the body.
@@ -927,7 +934,6 @@ in running text to be labels on their own.
 # topics
 subject:ti[dm]s?(rapport|ersättning)|time\s?sheet   reporting TA-management
 subject:lön|timmar|arvode                           reporting TA-management
-subject:\b(assning|asse|assistent)\b|(?-i:\bTA\b)   TA-management
 ladok|betyg                                         ladok examination
 kompletter(a|ing)|rätt(ad?|ning)                    examination
 redovis(a|ning)                                     examination
