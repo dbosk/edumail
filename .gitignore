@@ -4,6 +4,14 @@ edumail.pdf
 edumail.sh
 edumail.tex
 ltxobj/
+nymutt
+nymutt.sh
+mutt
+mutt.sh
+.muttrc.nytid
+labels.rules
+nymutt.pdf
+nymutt.tex
 
 
 ## Core latex/pdflatex auxiliary files:
@@ -216,9 +224,11 @@ sympy-plots-for-*.tex/
 *.upa
 *.upb
 
-# pythontex
+# pythontex (latexmk's cus_dep also leaves symlinks to these in the root)
 *.pytxcode
-pythontex-files-*/
+pythontex-files-*
+# latexmk rc symlink created by tex.mk
+latexmkrc
 
 # tcolorbox
 *.listing
