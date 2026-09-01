@@ -902,8 +902,8 @@ DA231X|exjobb|master.*thesis                        exjobb supervision
 
 \subsection{Topics}
 
-The topic rules reuse the labels we already track by hand---[[grading]],
-[[ladok]], [[restlabb]], [[TA-management]], [[reporting]],
+The topic rules reuse the labels we already track by hand---[[ladok]],
+[[examination]], [[restlabb]], [[TA-management]], [[reporting]],
 [[meeting]]---so that email time lands in the same buckets as the rest
 of the work on that topic.
 Several rules carry two labels for the same reason:
@@ -912,6 +912,11 @@ the concurrent-label model costs nothing for saying so.
 The grading-related rules (Ladok, grades, resubmissions, examination,
 credit transfer, CSN) are unprefixed for the same reason as the course
 rules: they come from students, who put the matter in the body.
+They label the email [[examination]], not [[grading]]:
+a student asking about a grade, a Ladok entry or a resubmission is
+examination administration, whereas [[grading]] is the time spent
+grading, which we track by hand (and through the Urkund stream
+below)---mixing the two would inflate it.
 Here too the body forces a tighter pattern:
 [[rester]] alone would match the everyday \enquote{resterande}, so
 resubmissions are [[rest(er\b|labb|uppgift|inlämn)]].
@@ -923,9 +928,9 @@ in running text to be labels on their own.
 subject:ti[dm]s?(rapport|ersättning)|time\s?sheet   reporting TA-management
 subject:lön|timmar|arvode                           reporting TA-management
 subject:\b(assning|asse|assistent)\b|(?-i:\bTA\b)   TA-management
-ladok|betyg                                         ladok grading examination
-kompletter(a|ing)|rätt(ad?|ning)                    grading examination
-redovis(a|ning)                                     grading examination
+ladok|betyg                                         ladok examination
+kompletter(a|ing)|rätt(ad?|ning)                    examination
+redovis(a|ning)                                     examination
 examin(era|ation)                                   examination
 \brest(er\b|labb|uppgift|inlämn)                    restlabb examination
 (?-i:\bCSN\b)                                       csn examination
