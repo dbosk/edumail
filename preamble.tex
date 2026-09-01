@@ -1,4 +1,8 @@
 \usepackage[utf8]{inputenc}
+% The example emails carry KTH's disclaimer, separated by a line of heavy
+% horizontal box-drawing characters (U+2501), which pdfLaTeX has no glyph
+% for; typeset each as a short rule.
+\DeclareUnicodeCharacter{2501}{\rule{0.5em}{0.12ex}}
 \usepackage[T1]{fontenc}
 \usepackage[swedish,british]{babel}
 

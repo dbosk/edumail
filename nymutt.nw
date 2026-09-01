@@ -56,7 +56,8 @@ def print_verbatim(output):
 
 demoenv = dict(os.environ,
                EDUMAIL="./edumail",
-               XDG_CONFIG_HOME="/nonexistent")
+               XDG_CONFIG_HOME="/nonexistent",
+               LABELS_RULES="labels.rules")
 \end{pycode}
 
 @
@@ -291,14 +292,36 @@ derive() {
 
 This is also the testing entry point, since it's the only subcommand
 with no side effects.
-Running it on [[edumail]]'s example emails:
+Running it on [[edumail]]'s example emails, with the seed rules from
+\cref{SeedRules} as the rules file (we point [[XDG_CONFIG_HOME]] away
+from the author's personal rules file and [[LABELS_RULES]] at the file
+tangled from this document):
 \begin{pycode}
 output = subprocess.run(["./nymutt", "derive", "email1.txt"],
                         capture_output=True, env=demoenv)
 print_verbatim(output.stdout)
 \end{pycode}
-(As in the [[edumail]] documentation, we point [[XDG_CONFIG_HOME]] away
-from the author's personal rules file when compiling this document.)
+Here [[edumail]] contributes [[prgi]]; the seed rules add [[restlabb]],
+[[examination]] and [[ladok]] from the student's words (\enquote{restlabb},
+\enquote{redovisade}, \enquote{Ladok}).
+The fourth example, a student who names the course and asks about a
+missing grade, works the same way:
+\begin{pycode}
+output = subprocess.run(["./nymutt", "derive", "email4.txt"],
+                        capture_output=True, env=demoenv)
+print_verbatim(output.stdout)
+\end{pycode}
+The fifth is an application to become a teaching assistant.
+[[edumail]] recognizes it as such and then leaves out the module-level
+labels, its own assignment groups as well as the rules'
+[[examination]]---the applicant's \enquote{rättade} would otherwise
+have matched---while a course the rules know ([[tilda]], from DD1320 in
+the applicant's experience) is kept:
+\begin{pycode}
+output = subprocess.run(["./nymutt", "derive", "email5.txt"],
+                        capture_output=True, env=demoenv)
+print_verbatim(output.stdout)
+\end{pycode}
 
 \subsection{Opening an email}
 
@@ -758,8 +781,9 @@ Swedish verb \enquote{ta}, which opens half of all Swedish subject lines.
 [[edumail]] always greps with [[-i]], so a naive translation would put
 [[TA-management]] on most of the inbox.
 PCRE lets a group opt out of the outer flag, [[(?-i:...)]], and every
-all-caps token below (TA, CSN, LAB1, the programme codes, the learned
-societies) is wrapped that way.
+all-caps token below (CSN, KAL1, the programme codes, the learned
+societies) is wrapped that way---as is the TA in [[edumail]]'s own
+assistant test, where that rule now lives (see below).
 
 Not everything in the scoring file names a topic.
 Rules on age, flags and urgency words rank emails without saying what
@@ -767,8 +791,10 @@ they are about, and domain-wide rules (anything from a Swedish
 university) would put a label on nearly every email; both kinds are left
 out.
 So are the courses that [[edumail labels]] already recognises by keyword
-(programming, datintro, crypto, science):
-the seed only adds the courses it does not.
+(programming, datintro, crypto, science), and mail about teaching
+assistants, which it recognises itself so that it can leave the module
+labels out of such mail:
+the seed only adds what it does not.
 
 The file opens with the format reminder from the original one-line seed.
 <<[[labels.rules]]>>=
@@ -902,16 +928,25 @@ DA231X|exjobb|master.*thesis                        exjobb supervision
 
 \subsection{Topics}
 
-The topic rules reuse the labels we already track by hand---[[grading]],
-[[ladok]], [[restlabb]], [[TA-management]], [[reporting]],
+The topic rules reuse the labels we already track by hand---[[ladok]],
+[[examination]], [[restlabb]], [[TA-management]], [[reporting]],
 [[meeting]]---so that email time lands in the same buckets as the rest
 of the work on that topic.
 Several rules carry two labels for the same reason:
 a timesheet from a TA is both [[reporting]] and [[TA-management]], and
 the concurrent-label model costs nothing for saying so.
+The [[TA-management]] label is spelled as [[edumail]] spells it, since
+[[edumail]] emits it itself for mail about teaching assistants; the
+rules here only add the cases it can't see, timesheets and pay.
+
 The grading-related rules (Ladok, grades, resubmissions, examination,
 credit transfer, CSN) are unprefixed for the same reason as the course
 rules: they come from students, who put the matter in the body.
+They label the email [[examination]], not [[grading]]:
+a student asking about a grade, a Ladok entry or a resubmission is
+examination administration, whereas [[grading]] is the time spent
+grading, which we track by hand (and through the Urkund stream
+below)---mixing the two would inflate it.
 Here too the body forces a tighter pattern:
 [[rester]] alone would match the everyday \enquote{resterande}, so
 resubmissions are [[rest(er\b|labb|uppgift|inlämn)]].
@@ -922,10 +957,9 @@ in running text to be labels on their own.
 # topics
 subject:ti[dm]s?(rapport|ersättning)|time\s?sheet   reporting TA-management
 subject:lön|timmar|arvode                           reporting TA-management
-subject:\b(assning|asse|assistent)\b|(?-i:\bTA\b)   TA-management
-ladok|betyg                                         ladok grading examination
-kompletter(a|ing)|rätt(ad?|ning)                    grading examination
-redovis(a|ning)                                     grading examination
+ladok|betyg                                         ladok examination
+kompletter(a|ing)|rätt(ad?|ning)                    examination
+redovis(a|ning)                                     examination
 examin(era|ation)                                   examination
 \brest(er\b|labb|uppgift|inlämn)                    restlabb examination
 (?-i:\bCSN\b)                                       csn examination
