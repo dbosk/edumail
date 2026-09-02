@@ -864,6 +864,11 @@ here---once, since [[course]] is the expensive part of this script and the
 tests below would otherwise each run it again.
 <<find assignment groups in [[file]]>>=
 local courses=$(course "$file")
+<<literal assignment groups in [[file]]>>
+@ The literal search is a chunk of its own because it is also all that
+mail from a program gets (\cref{LabelsSection}): what such mail names it
+means, but its words are not to be guessed from.
+<<literal assignment groups in [[file]]>>=
 clean "$file" \
 | grep -Po "${ASSIGNMENT_GROUP}" \
 | grep -Pv "${COURSE_CODE}"
@@ -1396,15 +1401,42 @@ examination rules (\enquote{rättade} again), and both would be the wrong
 bucket.
 So we test for that kind of email first, and derive the module-level
 labels only when it isn't one.
+
+One distinction comes before even that.
+The keyword families and the module tests are guesses from words, made
+for students who describe a course rather than name it---mail written
+by people.
+Mail written by programs uses the same words for other reasons.
+\begin{example}\label{email9}
+A cron job reports that the nightly backup failed.
+\inputminted[highlightlines={2,4,9}]{text}{email9.txt}
+The word \enquote{ssh} is what a datintro student writes about, and
+here it occurs three times.
+\end{example}
+Guessed from its words, \cref{email9} is a datintro email, module and
+all; a GitHub notification fares no better, since \enquote{git} is in
+its sender's name.
+What a program \emph{states} is evidence all the same:
+a script that reports grades names the course code and the assignment
+group it reported.
+So for such mail we keep what is stated literally and what the rules
+say, and skip the guesses.
+Which senders are programs is nothing this script can know---the list
+changes with every tool we adopt---so the rules file says so, with a
+[[stream:]] rule (\cref{LabelRules}).
 <<functions>>=
 labels() {
   local file=$(file_or_stdin "$1")
   (
-    course_candidates "$file"
-    if <<test for TA terms>>; then
-      <<labels about the course as a whole>>
+    if is_stream "$file"; then
+      <<labels from what a stream states>>
     else
-      <<labels about the course's modules>>
+      course_candidates "$file"
+      if <<test for TA terms>>; then
+        <<labels about the course as a whole>>
+      else
+        <<labels about the course's modules>>
+      fi
     fi
   ) | sort -u
 }
@@ -1425,7 +1457,7 @@ Emails about the course as a whole get the [[TA-management]] label
 instead of assignment groups, and the rules' labels minus the
 examination ones.
 Those names are a convention of the seed rules that ship with
-[[nymutt]] (\cref{SeedRules} in its documentation), which attach them to
+[[nymutt]] (the seed rules section of its documentation), which attach them to
 module-level matters: grades, Ladok, resubmissions.
 That is why this script may know them; a rules file that uses other
 names for those matters must extend the list.
@@ -1438,7 +1470,50 @@ labels_rules "$file" | grep -vxE "${EXAMINATION_LABELS}"
 EXAMINATION_LABELS="examination|grading|ladok"
 @
 
+Mail from a program gets what it states and what the rules say.
+The named courses are the ones [[course_candidates]] would have found;
+what is left out is its fallback to the keyword families, and the
+module tests, which guess from the same words.
+The literal assignment groups stay, since a program that prints
+[[LAB1]] means it.
+There is no assistant test either: a program does not apply for a job.
+<<labels from what a stream states>>=
+named_courses "$file"
+<<literal assignment groups in [[file]]>>
+labels_rules "$file"
+@
+
 \subsection{Recognizing mail about teaching assistants}
+
+Three emails from one thread show what such mail looks like from our
+side of it: we ask for a contract, the assistant answers, and the
+personnel office answers.
+\begin{example}\label{email6}
+We ask the personnel office for an assistant's contract, as a
+tab-separated line: identifier, name and address, first and last day,
+percentage.
+\inputminted[highlightlines={3,5,13,15}]{text}{email6.txt}
+Nothing here names a course, and the only word about the employment is
+the compound \enquote{amanuensavtal}.
+\end{example}
+\begin{example}\label{email7}
+The assistant replies that the percentage is too high.
+\inputminted[highlightlines={2,4,11}]{text}{email7.txt}
+The reply says \enquote{rättat till} about their bookings, which the
+rules of \cref{LabelRules} would take for grading.
+\end{example}
+\begin{example}\label{email8}
+The personnel office replies to us and a colleague, who both asked for
+a contract with the same assistant, because the two add up to more
+than the allowed 50\%.
+\inputminted[highlightlines={2,5,12-14}]{text}{email8.txt}
+The words are employment words---\enquote{timanställning},
+\enquote{amanuenstjänsten}, \enquote{jobba på timme}---and the sender
+is a support desk.
+\end{example}
+All three are about the assistant's employment and none about a module
+of the course; which course it is the thread never says, so no course
+can be derived from it.
 
 The test is a conjunction:
 the email must mention an assistant \emph{and} hint at employment.
@@ -1457,13 +1532,18 @@ applicants write, in the slang forms \enquote{asse} and
 employed part time.
 The short forms need word boundaries, or \enquote{asse} would match
 inside far too many words.
+\enquote{Amanuens} needs the opposite, a boundary in front only:
+it is the head of the compounds that contract mail is written
+in---\enquote{amanuensavtal}, \enquote{amanuensanställning},
+\enquote{amanuenstjänst}---and \cref{email6} consists of little else.
+No other Swedish word starts that way, so the bare stem is safe.
 The abbreviation TA needs more:
 we grep case-insensitively, but \enquote{ta} is a verb that opens half
 of all Swedish subject lines, so that alternative opts out of the
 case-insensitivity with PCRE's [[(?-i:...)]].
 <<variables>>=
 TA_NOUN="\b(assning|asse|(lärar)?assistent(en|er|erna)?)\b"
-TA_NOUN="${TA_NOUN}|\bamanuens(en|er|erna)?\b|(?-i:\bTA\b)"
+TA_NOUN="${TA_NOUN}|\bamanuens|(?-i:\bTA\b)"
 @
 
 The employment hints are what \cref{email5} offers---\enquote{intresse
@@ -1474,11 +1554,17 @@ The verbs \enquote{bli}, \enquote{vara} and the word \enquote{som} are
 everywhere, so they count only directly before the noun.
 \enquote{Timmar} is deliberately not a hint:
 students write about the hours they spent on a lab.
+\enquote{Amanuens} is a hint by itself:
+where \enquote{assistent} is what a student calls the person who graded
+their lab, \enquote{amanuens} is a job title, so an email that uses it
+is about the employment---\cref{email6} asks for a contract in a single
+line with no other work word in it.
+The word is therefore in both lists and carries the test alone.
 <<variables>>=
 TA_EMPLOYMENT="\b(jobba|arbeta|anställ|ansök|praktik|intresse|rekryter"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|arvode|lön\b)"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|\b(bli|vara|varit|som)\s+(lärar)?assistent"
-TA_EMPLOYMENT="${TA_EMPLOYMENT}|\b(bli|vara|varit|som)\s+amanuens"
+TA_EMPLOYMENT="${TA_EMPLOYMENT}|\bamanuens"
 @
 
 \subsection{User-defined label rules}\label{LabelRules}
@@ -1503,10 +1589,20 @@ field to restrict where it must match:
 [[from:]] matches only the \enquote{From: } header (this is how senders
 become labels), [[subject:]] only the \enquote{Subject: } header, and no
 prefix matches anywhere in the cleaned email.
+A fourth prefix, [[stream:]], matches the \enquote{From: } header like
+[[from:]] and says one thing more: the sender is a program.
+For an email a [[stream:]] rule matches, [[labels]] skips its keyword
+guesses and keeps only what the email states literally and what the
+rules say (\cref{email9} shows why); such a rule may even carry no
+labels, when that is all there is to say.
+The prefix is deliberately not [[from:]] with a side effect:
+a rule for a person is a [[from:]] rule, a rule for a tool is a
+[[stream:]] rule, and the file shows which is which.
 For example:
 \begin{minted}{text}
 # pattern                      labels
 from:.*@ug\.kth\.se            admin
+stream:Cron\sDaemon            admin
 exjobb|thesis                  supervision exjobb
 \end{minted}
 
@@ -1516,20 +1612,42 @@ This gives a trivially simple format at the price that a pattern cannot
 contain literal whitespace---use [[\s]] in the regex instead.
 Every matching rule contributes its labels; an email about two things gets
 both sets, which is exactly what concurrent time tracking wants.
+The rules answer two questions, though---which labels, and whether a
+[[stream:]] rule matched---and both need the same walk through the
+file.
+Rather than two loops that each know the prefixes, one function reports
+every matching rule as its field followed by its labels, and each
+question is a thin reading of that report.
 <<functions>>=
-labels_rules() {
+matching_rules() {
   local file=$(file_or_stdin "$1")
   [[ -r "${LABELS_RULES}" ]] || return 0
   local pattern rule_labels field
   while read -r pattern rule_labels; do
     <<skip comments and blank lines>>
     <<split any [[field]] prefix off [[pattern]]>>
-    <<emit [[rule_labels]] if [[pattern]] matches [[field]]>>
+    <<report the rule if [[pattern]] matches [[field]]>>
   done < "${LABELS_RULES}"
 }
 @ A missing rules file is not an error:
 the course tests alone are a useful default, and [[nymutt]] must keep
 working on a machine where no rules have been written yet.
+
+The labels are everything after the field, one per line as [[labels]]
+prints them; [[cut -s]] drops a report line with no labels rather than
+printing its field.
+The stream question is answered by the field alone, matched as a whole
+word so that a label-less [[stream]] line counts too.
+<<functions>>=
+labels_rules() {
+  local file=$(file_or_stdin "$1")
+  matching_rules "$file" | cut -s -d' ' -f2- | tr ' ' '\n'
+}
+is_stream() {
+  local file=$(file_or_stdin "$1")
+  matching_rules "$file" | grep -qw '^stream'
+}
+@
 
 A comment line's first word starts with [[#]], and on a blank line
 [[read]] leaves the pattern empty.
@@ -1539,13 +1657,14 @@ A comment line's first word starts with [[#]], and on a blank line
 
 The field prefix is split off with shell prefix removal rather than
 parsed with a regex:
-a colon is legal in a regex, so we only treat the two known prefixes
+a colon is legal in a regex, so we only treat the three known prefixes
 specially and let anything else---including a pattern that happens to
 start with [[http:]]---fall through as a whole-email pattern.
 <<split any [[field]] prefix off [[pattern]]>>=
 field=any
 case "${pattern}" in
   from:*)    field=from;    pattern="${pattern#from:}";;
+  stream:*)  field=stream;  pattern="${pattern#stream:}";;
   subject:*) field=subject; pattern="${pattern#subject:}";;
 esac
 @
@@ -1555,16 +1674,19 @@ case-insensitive Perl grep as the course tests.
 The header fields are matched against the raw email, not the cleaned one:
 [[clean]] exists to stop \emph{body} keywords from matching noise headers,
 but a [[from:]] rule wants exactly a header line.
-The unquoted [[${rule_labels}]] in [[printf]] is deliberate:
-word splitting turns the rule's labels into one argument each, which
-[[printf]] then prints one per line, the output format of [[labels]].
-<<emit [[rule_labels]] if [[pattern]] matches [[field]]>>=
+A [[stream:]] rule searches that same line; its extra meaning is read
+off the field name by [[is_stream]], not acted on here.
+The unquoted [[${rule_labels}]] in [[echo]] is deliberate:
+word splitting collapses whatever whitespace separated the labels in
+the file to single spaces, so the report has a fixed shape that [[cut]]
+can take apart.
+<<report the rule if [[pattern]] matches [[field]]>>=
 case "${field}" in
-  from)    grep -i "^From: "    "$file";;
-  subject) grep -i "^Subject: " "$file";;
-  any)     clean "$file";;
+  from|stream) grep -i "^From: "    "$file";;
+  subject)     grep -i "^Subject: " "$file";;
+  any)         clean "$file";;
 esac | grep -qiP "${pattern}" \
-  && printf '%s\n' ${rule_labels}
+  && echo "${field}" ${rule_labels}
 @
 
 \subsection{Testing on the emails}
@@ -1611,6 +1733,45 @@ email = "Subject: Re: LAB2\n\nAssistenten sa att det var godkänt.\n"
 output = subprocess.run(["./edumail", "labels"], input=email.encode(),
                         capture_output=True, env=norules)
 print_verbatim(output.stdout)
+\end{pycode}
+The contract thread (\cref{email6,email7,email8}) is recognized on the
+word \enquote{amanuens} alone, and yields nothing else:
+no course is named, no module mentioned, and without a rules file there
+is nothing for the examination filter to remove.
+\begin{pycode}
+lines = []
+for email in ["email6.txt", "email7.txt", "email8.txt"]:
+    output = subprocess.run(["./edumail", "labels", email],
+                            capture_output=True, env=norules)
+    lines.append(f"{email}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+What the rules add to the thread is shown with the seed rules in the
+[[nymutt]] documentation.
+
+\Cref{email9} shows the guesses at work on a program's output, and what
+a [[stream:]] rule does about them.
+With no rules, the cron job's \enquote{ssh} makes it a datintro email,
+module and all:
+\begin{pycode}
+output = subprocess.run(["./edumail", "labels", "email9.txt"],
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+A [[from:]] rule for the daemon adds its label and changes nothing else,
+whereas the same rule as a [[stream:]] rule also takes the guesses away:
+\begin{pycode}
+import tempfile
+lines = []
+for prefix in ["from", "stream"]:
+    rules = tempfile.NamedTemporaryFile("w", suffix=".rules", delete=False)
+    rules.write(f"{prefix}:Cron\\sDaemon  admin\n")
+    rules.close()
+    output = subprocess.run(["./edumail", "labels", "email9.txt"],
+                            capture_output=True,
+                            env=dict(norules, LABELS_RULES=rules.name))
+    lines.append(f"{prefix}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
 \end{pycode}
 An email matching neither a course test nor a rule yields nothing at all;
 it's the caller's job to fall back to something sensible---[[nymutt]]
