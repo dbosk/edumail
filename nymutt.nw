@@ -29,7 +29,9 @@
   when we open an email in [[mutt]], labels derived from the email
   (course, sender, keywords) should start; when we return to the index,
   they should stop; while we write email---a reply or a fresh
-  message---a [[writing]] label should run.
+  message---a [[writing]] label should run; and the pager's status line
+  should show what is running, so we see when the inference needs a
+  correction.
   [[mutt]] has no hooks for leaving the pager or finishing a reply, so we
   build the integration from macro-wrapped key bindings, an editor
   wrapper, and a small state-keeping helper script.
@@ -100,7 +102,8 @@ This document tangles four files that cooperate:
   started.
 \item[\normalfont [[<<[[.muttrc.nytid]]>>]] ]
   installed as [[~/.muttrc.nytid]] and sourced from [[~/.muttrc]]:
-  the macros and settings that wire the helper into [[mutt]].
+  the macros and settings that wire the helper into [[mutt]] and show
+  the owned labels in the pager's status line.
 \item[\normalfont [[<<[[mutt.sh]]>>]] ]
   installed as [[~/bin/mutt]]:
   the session wrapper, extended to clean up per-email timers when the
@@ -114,12 +117,14 @@ This document tangles four files that cooperate:
 
 A reading session then works like this.
 Pressing return in the index pipes the message to
-[[nymutt open]], which starts the derived labels, and then displays
-the message.
+[[nymutt open]], which starts the derived labels, then refreshes the
+pager's status line so that it names the labels now owned, and then
+displays the message.
 Leaving the pager runs [[nymutt close]], which stops them.
 Moving to the next message from within the pager runs [[open]] again,
 which retargets the timers:
 labels shared with the previous email simply keep running.
+Correcting the labels by hand ([[nymutt edit]]) refreshes the line too.
 Replying---or composing a fresh message---opens the editor, which
 [[mutt]] is configured to reach through [[nymutt editor]]---the
 wrapper tracks the [[writing]] label for exactly as long as the
@@ -591,6 +596,67 @@ for label in ${removed}; do
 done
 @
 
+\subsection{Showing the labels in the pager}\label{ShowingLabels}
+
+Whether the derived labels need correcting is easiest to judge if they
+are in view while reading, not only after pressing the edit key.
+The natural place is the pager's status line---the one line [[mutt]]
+draws under every message, from [[pager_format]]---but [[mutt]] cannot
+read our state file when it draws that line, and the one mechanism it
+has for consulting a program there is unusable for us
+(\cref{StatusLine}).
+So the [[mutt]] side asks this script, whenever the owned set may have
+changed, for a complete [[pager_format]] with the labels already in it.
+
+What goes on the line is the owned set, [[current]], not what [[nytid]]
+reports as active:
+it is the set that [[edit]] presents and changes, so the line answers
+exactly the question it exists for (\enquote{do I need to edit this?}),
+and it is honest about labels a rule wanted but this session never got.
+The format is [[neomutt]]'s default with the labels inserted to the
+right of the soft fill ([[%*]]), just before the position indicator.
+Soft fill truncates what stands \emph{left} of it when the line is too
+long, so a long label list costs subject width rather than falling off
+the right edge---the labels are what this line is for.
+The placeholder is [[{labels}]]; a brace is only special to [[mutt]]
+after a percent sign, so no format can contain it by accident.
+A user with a [[pager_format]] of their own supplies it, placeholder
+included, in [[NYMUTT_PAGER_FORMAT]].
+<<variables>>=
+DEFAULT_PAGER_FORMAT='-%Z- %C/%m: %-20.20n   %s%*  -- [{labels}] (%P)'
+PAGER_FORMAT="${NYMUTT_PAGER_FORMAT:-${DEFAULT_PAGER_FORMAT}}"
+<<functions>>=
+pager_format() {
+  local labels=$(current_labels | tr '\n' ' ' | sed 's/ $//; s/%/%%/g')
+  echo "${PAGER_FORMAT//\{labels\}/${labels:-none}}"
+}
+@ Three details serve the consumer.
+[[mutt]] reads only the first line of a command's output, so the labels
+are joined onto one.
+A percent sign in a label is doubled, since [[mutt]] parses the output
+as a format string; no rule produces such a label, but [[edit]] accepts
+whatever is typed.
+And an empty set prints [[none]] rather than nothing:
+it can happen (every derived label was already running elsewhere, so
+[[start_labels]] recorded nothing), and then the line should say so
+rather than look broken.
+
+With no state yet, and then with two owned labels:
+\begin{pycode}
+import tempfile
+statedir = tempfile.mkdtemp()
+stateenv = dict(demoenv, XDG_RUNTIME_DIR=statedir)
+output = subprocess.run(["./nymutt", "pager_format"],
+                        capture_output=True, env=stateenv)
+print_verbatim(output.stdout)
+os.makedirs(f"{statedir}/nymutt/default")
+with open(f"{statedir}/nymutt/default/current", "w") as f:
+    f.write("email\nprgi\n")
+output = subprocess.run(["./nymutt", "pager_format"],
+                        capture_output=True, env=stateenv)
+print_verbatim(output.stdout)
+\end{pycode}
+
 \subsection{Cleaning up}
 
 The wrapper calls [[cleanup]] after the mail client exits, however it
@@ -628,8 +694,51 @@ set pager_stop = yes
 set editor = "~/bin/nymutt editor"
 @
 
+\subsection{The status line}\label{StatusLine}
+
+[[mutt]] has one way to let a program contribute to a status line:
+a format string ending in a pipe is expanded and then run as a shell
+command, whose output is displayed instead.
+It is unusable here, twice over.
+The expanded string is passed to the shell \emph{unquoted} (NeoMutt
+20250510, [[expando/filter.c]]; the manual still describes the older
+implementation, which quoted each word), so a [[pager_format]] filter
+that includes the subject or the sender lets anyone who can email us
+run commands on our machine.
+And the filter runs on every redraw---every scrolled line---whereas the
+labels change only in [[open]] and [[edit]].
+
+We turn it around: the macros that may change the owned set end by
+asking the script for the format (\cref{ShowingLabels}) and setting the
+variable,
+\begin{center}
+[[<enter-command>set pager_format = "`~/bin/nymutt pager_format`"<enter>]]
+\end{center}
+A backtick command inside a quoted [[set]] value runs when the command
+is executed, and its output is inserted into the value verbatim, never
+re-parsed; the subject stays a [[%s]] that [[mutt]] expands itself and
+never meets a shell.
+Setting [[pager_format]] from inside the pager redraws the status line
+at once, so the labels appear as soon as the macro finishes.
+
+That command is written once, in a [[mutt]] user variable, because it
+is fiddly:
+its double quotes and backticks must be escaped, so that they survive
+into the variable instead of being interpreted while this file is
+read---the backticks must run each time a macro does, not once at
+startup.
+A [[$my_]] variable in a later [[macro]] definition is substituted
+verbatim when that line is parsed, so the macros below can use it as a
+building block.
+<<[[.muttrc.nytid]]>>=
+set my_nymutt_refresh = \
+  "<enter-command>set pager_format = \"\`~/bin/nymutt pager_format\`\"<enter>"
+@
+
+\subsection{The macros}
+
 Opening from the index:
-pipe the message to [[open]], then display it.
+pipe the message to [[open]], refresh the status line, then display it.
 [[<pipe-message>]] respects [[pipe_decode]] (set in our [[~/.muttrc]]),
 so the script sees a decoded body---better for keyword matching than
 raw quoted-printable---while the headers it needs are kept.
@@ -640,26 +749,28 @@ message, just with full headers.
 Keys that merely move the index selection---tab
 ([[<next-new-then-unread>]]), [[j]]/[[k]], arrows---need no wrapping:
 no message is displayed, so no tracking should start.
+The pipe and the refresh always go together, so they too become a
+building block; the refresh comes before [[<display-message>]] so that
+the pager is drawn with the right line the first time.
 <<[[.muttrc.nytid]]>>=
-macro index <return> \
-  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
+set my_nymutt_open = \
+  "<pipe-message>~/bin/nymutt open<enter>$my_nymutt_refresh"
+macro index <return> "$my_nymutt_open<display-message>" \
   "track and read message"
-macro index <enter> \
-  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
+macro index <enter> "$my_nymutt_open<display-message>" \
   "track and read message"
-macro index <keypadenter> \
-  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
+macro index <keypadenter> "$my_nymutt_open<display-message>" \
   "track and read message"
-macro index <space> \
-  "<pipe-message>~/bin/nymutt open<enter><display-message>" \
+macro index <space> "$my_nymutt_open<display-message>" \
   "track and read message"
-macro index h \
-  "<pipe-message>~/bin/nymutt open<enter><display-toggle-weed>" \
+macro index h "$my_nymutt_open<display-toggle-weed>" \
   "track and read message with full headers"
 @ ([[<keypadenter>]] is a NeoMutt key name; delete that line if this
 file ever feeds a stock mutt.)
 
-Leaving the pager for the index:
+Leaving the pager for the index.
+No refresh is needed here: the status line is not shown in the index,
+and every way back into the pager passes through [[open]].
 <<[[.muttrc.nytid]]>>=
 macro pager i "<shell-escape>~/bin/nymutt close<enter><exit>" \
   "untrack and exit pager"
@@ -686,48 +797,38 @@ mail),
 and the thread motions on control-N/P and escape-n/p.
 We wrap them all with the same tail.
 <<[[.muttrc.nytid]]>>=
-macro pager J "<next-entry><pipe-message>~/bin/nymutt open<enter>" \
+macro pager J "<next-entry>$my_nymutt_open" \
   "track and view next message"
-macro pager K \
-  "<previous-entry><pipe-message>~/bin/nymutt open<enter>" \
+macro pager K "<previous-entry>$my_nymutt_open" \
   "track and view previous message"
-macro pager <tab> \
-  "<next-new-then-unread><pipe-message>~/bin/nymutt open<enter>" \
+macro pager <tab> "<next-new-then-unread>$my_nymutt_open" \
   "track and view next new message"
-macro pager j \
-  "<next-undeleted><pipe-message>~/bin/nymutt open<enter>" \
+macro pager j "<next-undeleted>$my_nymutt_open" \
   "track and view next undeleted message"
-macro pager <down> \
-  "<next-undeleted><pipe-message>~/bin/nymutt open<enter>" \
+macro pager <down> "<next-undeleted>$my_nymutt_open" \
   "track and view next undeleted message"
-macro pager <right> \
-  "<next-undeleted><pipe-message>~/bin/nymutt open<enter>" \
+macro pager <right> "<next-undeleted>$my_nymutt_open" \
   "track and view next undeleted message"
-macro pager k \
-  "<previous-undeleted><pipe-message>~/bin/nymutt open<enter>" \
+macro pager k "<previous-undeleted>$my_nymutt_open" \
   "track and view previous undeleted message"
-macro pager <up> \
-  "<previous-undeleted><pipe-message>~/bin/nymutt open<enter>" \
+macro pager <up> "<previous-undeleted>$my_nymutt_open" \
   "track and view previous undeleted message"
-macro pager <left> \
-  "<previous-undeleted><pipe-message>~/bin/nymutt open<enter>" \
+macro pager <left> "<previous-undeleted>$my_nymutt_open" \
   "track and view previous undeleted message"
-macro pager \Cn \
-  "<next-thread><pipe-message>~/bin/nymutt open<enter>" \
+macro pager \Cn "<next-thread>$my_nymutt_open" \
   "track and view next thread"
-macro pager \Cp \
-  "<previous-thread><pipe-message>~/bin/nymutt open<enter>" \
+macro pager \Cp "<previous-thread>$my_nymutt_open" \
   "track and view previous thread"
-macro pager \en \
-  "<next-subthread><pipe-message>~/bin/nymutt open<enter>" \
+macro pager \en "<next-subthread>$my_nymutt_open" \
   "track and view next subthread"
-macro pager \ep \
-  "<previous-subthread><pipe-message>~/bin/nymutt open<enter>" \
+macro pager \ep "<previous-subthread>$my_nymutt_open" \
   "track and view previous subthread"
 @ One known leak remains:
 deleting with [[d]] auto-advances the pager (via [[resolve]]) without
 retargeting, so the deleted email's labels run until the next wrapped
 key or [[close]].
+(The status line is not refreshed either, and so keeps naming the
+deleted email's labels---which is the truth about what is running.)
 We leave [[d]] unwrapped on purpose:
 after deleting the \emph{last} message the pager falls back to the
 index, where a trailing [[<pipe-message>]] would start labels for a
@@ -736,9 +837,11 @@ label that the next tab press corrects anyway.
 (Pager [[h]] needs no wrapping either: it redisplays the \emph{same}
 message with full headers, and the labels are already running.)
 
-Finally, adjusting the labels while reading (or from the index):
+Finally, adjusting the labels while reading (or from the index); the
+refresh that follows is what makes the correction visible.
 <<[[.muttrc.nytid]]>>=
-macro index,pager ,l "<shell-escape>~/bin/nymutt edit<enter>" \
+macro index,pager ,l \
+  "<shell-escape>~/bin/nymutt edit<enter>$my_nymutt_refresh" \
   "edit tracking labels"
 @ Note there are no reply macros anywhere:
 reply tracking is entirely the editor wrapper's, by design
