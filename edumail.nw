@@ -1457,7 +1457,7 @@ Emails about the course as a whole get the [[TA-management]] label
 instead of assignment groups, and the rules' labels minus the
 examination ones.
 Those names are a convention of the seed rules that ship with
-[[nymutt]] (\cref{SeedRules} in its documentation), which attach them to
+[[nymutt]] (the seed rules section of its documentation), which attach them to
 module-level matters: grades, Ladok, resubmissions.
 That is why this script may know them; a rules file that uses other
 names for those matters must extend the list.
