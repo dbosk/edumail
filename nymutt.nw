@@ -340,6 +340,15 @@ for email in ["email6.txt", "email7.txt", "email8.txt"]:
     lines.append(f"{email}: " + " ".join(output.stdout.decode().split()))
 print_verbatim("\n".join(lines))
 \end{pycode}
+The ninth example is a cron job's output.
+Guessed from its words it would be datintro mail, on the strength of
+\enquote{ssh}; the seed's [[stream:]] rule for the cron daemon keeps
+the guess out and labels the reading as administration:
+\begin{pycode}
+output = subprocess.run(["./nymutt", "derive", "email9.txt"],
+                        capture_output=True, env=demoenv)
+print_verbatim(output.stdout)
+\end{pycode}
 
 \subsection{Opening an email}
 
@@ -791,6 +800,12 @@ The semantics shift from [[mutt]]'s \enquote{sent by} to \enquote{a
 party to}, which is what time tracking wants anyway:
 writing to a teaching assistant is TA work too.
 The same holds for [[mutt]]'s own recipient patterns ([[~t]], [[~c]]).
+The third prefix, [[stream:]], is for senders that are programs:
+it matches the sender line like [[from:]] and, in addition, tells
+[[edumail]] not to guess courses from the words of that email but to
+take only what it states literally and what the rules say (its
+documentation shows why).
+Every automated sender in the scoring file becomes such a rule below.
 
 One difference is easy to miss.
 [[mutt]] matches case-insensitively \emph{unless} the pattern contains an
@@ -821,9 +836,10 @@ The file opens with the format reminder from the original one-line seed.
 #
 #   [field:]PCRE<whitespace>label...
 #
-# field is from, subject or any (the default: anywhere in the
-# cleaned email).  Patterns are case-insensitive Perl regexes and
-# cannot contain whitespace; use \s instead.
+# field is from, stream (a program as sender: no keyword guesses),
+# subject or any (the default: anywhere in the cleaned email).
+# Patterns are case-insensitive Perl regexes and cannot contain
+# whitespace; use \s instead.
 @
 
 \subsection{People}
@@ -984,6 +1000,17 @@ resubmissions are [[rest(er\b|labb|uppgift|inlämn)]].
 The remaining topics keep the [[subject:]] prefix; words like
 \enquote{timmar}, \enquote{sjuk} or \enquote{fråga} are far too common
 in running text to be labels on their own.
+Cron mail is the one sender-based rule among the topics, and it is a
+[[stream:]] rule:
+reading a job's output is administration whatever the job printed, and
+the words it printed must not be guessed from---a failed backup's
+\enquote{ssh: connect to host} is exactly what a student's datintro
+question looks like.
+What the output states still counts, so a job that reports grades to
+Ladok names its course and gets the Ladok rule below.
+The jobs on one host are our own scripts on top of that; that rule is
+on the subject and needs no prefix of its own.
+Calendly and the survey tool are programs too, hence [[stream:]].
 <<[[labels.rules]]>>=
 # topics
 subject:ti[dm]s?(rapport|ersättning)|time\s?sheet   reporting TA-management
@@ -998,23 +1025,30 @@ tillgodoräk                                         tillgodo admin
 subject:kurs-?(analys|pm|(ut)?värdering)            course-admin
 subject:TEL.(meeting|möte)                          tel meeting
 subject:cerise                                      cerise
+stream:Cron\sDaemon                                 admin
 subject:cron.*dbosk@rpi                             admin scripts
-from:Calendly                                       meeting
+stream:Calendly                                     meeting
 subject:receipt\sfrom\sAnthropic                    expenses admin
 subject:(reviewer.*invitation|invitation.*reviewer) reviewing research
-from:KTH\sSurvey                                    survey
+stream:KTH\sSurvey                                  survey
 @
 
 Notification streams from tools are labelled by the tool, since the
 tool usually implies the activity: Canvas and FeedbackFruits mean
 teaching, GitHub means development, Urkund means grading.
+They are [[stream:]] rules, so [[edumail]] does not guess at them:
+a notification quotes commit messages, assignment names and chat lines,
+and GitHub's very name contains \enquote{git}, a datintro keyword, so
+without the prefix every GitHub notification would be datintro mail.
+What a notification names---a course code, an assignment group---is
+still taken literally, which is what we want from Canvas.
 <<[[labels.rules]]>>=
 # tools and notification streams
-from:Canvas|notifications@instructure\.com          canvas
-from:feedbackfruits                                 feedbackfruits canvas
-from:GitHub|notifications@github\.com               devel
-from:Zulip                                          zulip
-from:noreply@urkund\.se                             urkund grading
+stream:Canvas|notifications@instructure\.com        canvas
+stream:feedbackfruits                               feedbackfruits canvas
+stream:GitHub|notifications@github\.com             devel
+stream:Zulip                                        zulip
+stream:noreply@urkund\.se                           urkund grading
 subject:SIGCSE-members                              mailinglist CSE
 @
 
@@ -1025,18 +1059,20 @@ alerts and society mailings.
 Skimming them still costs time, so they get a label rather than none,
 and the digests that feed literature awareness get [[research]] too, so
 that this time is counted where it belongs.
+They are [[stream:]] rules as well: a digest that mentions Python or a
+project is not about our programming course.
 The society acronyms are matched case-sensitively; [[acm]] and
 [[sans]] are substrings of too many names.
 <<[[labels.rules]]>>=
 # newsletters and digests
-from:Google\sScholar|Springer\sAlert|ScienceDirect  newsletter research
-from:Nature\sBriefing|News\sfrom\sScience           newsletter research
+stream:Google\sScholar|Springer\sAlert|ScienceDirectnewsletter research
+stream:Nature\sBriefing|News\sfrom\sScience         newsletter research
 subject:Aktuell\shögskolepedagogisk\sforskning      newsletter research
-from:ACM\sDigital\sLibrary|Xplore                   newsletter research
-from:(?-i:\b(IEEE|ACM|SIAM)\b)                      newsletter research
-from:The\sDownload|Times\sHigher\sEducation         newsletter
-from:(?-i:\bSANS\b)|EIT\sDigital                    newsletter
-from:KTH\s(Magazine|Opportunities\sFund|Alumni)     newsletter
+stream:ACM\sDigital\sLibrary|Xplore                 newsletter research
+stream:(?-i:\b(IEEE|ACM|SIAM)\b)                    newsletter research
+stream:The\sDownload|Times\sHigher\sEducation       newsletter
+stream:(?-i:\bSANS\b)|EIT\sDigital                  newsletter
+stream:KTH\s(Magazine|Opportunities\sFund|Alumni)   newsletter
 @
 
 
