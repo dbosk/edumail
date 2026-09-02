@@ -1440,6 +1440,36 @@ EXAMINATION_LABELS="examination|grading|ladok"
 
 \subsection{Recognizing mail about teaching assistants}
 
+Three emails from one thread show what such mail looks like from our
+side of it: we ask for a contract, the assistant answers, and the
+personnel office answers.
+\begin{example}\label{email6}
+We ask the personnel office for an assistant's contract, as a
+tab-separated line: identifier, name and address, first and last day,
+percentage.
+\inputminted[highlightlines={3,5,13,15}]{text}{email6.txt}
+Nothing here names a course, and the only word about the employment is
+the compound \enquote{amanuensavtal}.
+\end{example}
+\begin{example}\label{email7}
+The assistant replies that the percentage is too high.
+\inputminted[highlightlines={2,4,11}]{text}{email7.txt}
+The reply says \enquote{rättat till} about their bookings, which the
+rules of \cref{LabelRules} would take for grading.
+\end{example}
+\begin{example}\label{email8}
+The personnel office replies to us and a colleague, who both asked for
+a contract with the same assistant, because the two add up to more
+than the allowed 50\%.
+\inputminted[highlightlines={2,5,12-14}]{text}{email8.txt}
+The words are employment words---\enquote{timanställning},
+\enquote{amanuenstjänsten}, \enquote{jobba på timme}---and the sender
+is a support desk.
+\end{example}
+All three are about the assistant's employment and none about a module
+of the course; which course it is the thread never says, so no course
+can be derived from it.
+
 The test is a conjunction:
 the email must mention an assistant \emph{and} hint at employment.
 A student writing \enquote{assistenten sa att det var godkänt} is asking
@@ -1457,13 +1487,18 @@ applicants write, in the slang forms \enquote{asse} and
 employed part time.
 The short forms need word boundaries, or \enquote{asse} would match
 inside far too many words.
+\enquote{Amanuens} needs the opposite, a boundary in front only:
+it is the head of the compounds that contract mail is written
+in---\enquote{amanuensavtal}, \enquote{amanuensanställning},
+\enquote{amanuenstjänst}---and \cref{email6} consists of little else.
+No other Swedish word starts that way, so the bare stem is safe.
 The abbreviation TA needs more:
 we grep case-insensitively, but \enquote{ta} is a verb that opens half
 of all Swedish subject lines, so that alternative opts out of the
 case-insensitivity with PCRE's [[(?-i:...)]].
 <<variables>>=
 TA_NOUN="\b(assning|asse|(lärar)?assistent(en|er|erna)?)\b"
-TA_NOUN="${TA_NOUN}|\bamanuens(en|er|erna)?\b|(?-i:\bTA\b)"
+TA_NOUN="${TA_NOUN}|\bamanuens|(?-i:\bTA\b)"
 @
 
 The employment hints are what \cref{email5} offers---\enquote{intresse
@@ -1474,11 +1509,17 @@ The verbs \enquote{bli}, \enquote{vara} and the word \enquote{som} are
 everywhere, so they count only directly before the noun.
 \enquote{Timmar} is deliberately not a hint:
 students write about the hours they spent on a lab.
+\enquote{Amanuens} is a hint by itself:
+where \enquote{assistent} is what a student calls the person who graded
+their lab, \enquote{amanuens} is a job title, so an email that uses it
+is about the employment---\cref{email6} asks for a contract in a single
+line with no other work word in it.
+The word is therefore in both lists and carries the test alone.
 <<variables>>=
 TA_EMPLOYMENT="\b(jobba|arbeta|anställ|ansök|praktik|intresse|rekryter"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|arvode|lön\b)"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|\b(bli|vara|varit|som)\s+(lärar)?assistent"
-TA_EMPLOYMENT="${TA_EMPLOYMENT}|\b(bli|vara|varit|som)\s+amanuens"
+TA_EMPLOYMENT="${TA_EMPLOYMENT}|\bamanuens"
 @
 
 \subsection{User-defined label rules}\label{LabelRules}
@@ -1612,6 +1653,20 @@ output = subprocess.run(["./edumail", "labels"], input=email.encode(),
                         capture_output=True, env=norules)
 print_verbatim(output.stdout)
 \end{pycode}
+The contract thread (\cref{email6,email7,email8}) is recognized on the
+word \enquote{amanuens} alone, and yields nothing else:
+no course is named, no module mentioned, and without a rules file there
+is nothing for the examination filter to remove.
+\begin{pycode}
+lines = []
+for email in ["email6.txt", "email7.txt", "email8.txt"]:
+    output = subprocess.run(["./edumail", "labels", email],
+                            capture_output=True, env=norules)
+    lines.append(f"{email}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+What the rules add to the thread is shown with the seed rules in the
+[[nymutt]] documentation.
 An email matching neither a course test nor a rule yields nothing at all;
 it's the caller's job to fall back to something sensible---[[nymutt]]
 always adds a base [[email]] label of its own.

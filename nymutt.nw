@@ -322,6 +322,24 @@ output = subprocess.run(["./nymutt", "derive", "email5.txt"],
                         capture_output=True, env=demoenv)
 print_verbatim(output.stdout)
 \end{pycode}
+The last three examples are a thread about an assistant's contract:
+we ask the personnel office for it, the assistant replies, the office
+replies.
+[[edumail]] recognizes all three as assistant matters, and the seed
+rules add [[admin]] for the support desk on the two emails it is party
+to; the assistant's \enquote{rättat} in the second matches the rules'
+examination line, but [[edumail]] discards that label for mail about
+the course as a whole.
+No course appears, because none is named: the thread is about a
+person and a percentage.
+\begin{pycode}
+lines = []
+for email in ["email6.txt", "email7.txt", "email8.txt"]:
+    output = subprocess.run(["./nymutt", "derive", email],
+                            capture_output=True, env=demoenv)
+    lines.append(f"{email}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
 
 \subsection{Opening an email}
 
@@ -891,6 +909,19 @@ Johan\sSnider                                       colleague CSE
 Simone\sFischer-H(ü|ue)bner                         swits research security
 subject:swits                                       swits research security
 @
+
+One kind of person the seed leaves out is the teaching assistant.
+[[edumail]] already gives their mail its role label ([[TA-management]]),
+but the role is not the bucket we sum up under; the course is, and
+contract and pay mail never names it---the last three of [[edumail]]'s
+example emails are a thread about one assistant's percentage in which
+the course is not mentioned once.
+The assistant's name is then the only evidence there is, so a line per
+assistant and term, mapping the name to the course they assist in,
+would put that mail where it belongs.
+The seed cannot know this term's assistants, and we have not yet
+maintained such lines by hand; it is noted here as the way to do it
+when the sums for [[TA-management]] need splitting by course.
 
 \subsection{Courses}
 
