@@ -1511,6 +1511,16 @@ The words are employment words---\enquote{timanställning},
 \enquote{amanuenstjänsten}, \enquote{jobba på timme}---and the sender
 is a support desk.
 \end{example}
+\begin{example}\label{email10}
+The same matter from the other direction: a note to ourselves recording
+who we have taken on.
+\inputminted[highlightlines={4,12,16,18}]{text}{email10.txt}
+This one offers no employment word at all.
+It \emph{states} the employment instead, on the last line: a person, the
+first and last day, and a share of full time---the line
+\cref{email6} sends to the personnel office.
+The only word for the people is the slang plural \enquote{assar}.
+\end{example}
 All three are about the assistant's employment and none about a module
 of the course; which course it is the thread never says, so no course
 can be derived from it.
@@ -1527,11 +1537,16 @@ about a module, and the noun alone cannot tell that email from
 
 The noun comes in Swedish inflections (\enquote{assistenten},
 \enquote{assistenter}), in the compound \enquote{lärarassistent} that
-applicants write, in the slang forms \enquote{asse} and
-\enquote{assning}, and as \enquote{amanuens}, the title of a student
-employed part time.
+applicants write, in the slang forms \enquote{asse}, \enquote{assar},
+\enquote{assarna} and \enquote{assning}, and as \enquote{amanuens}, the
+title of a student employed part time.
 The short forms need word boundaries, or \enquote{asse} would match
 inside far too many words.
+The plural is spelled out as alternatives rather than left as a stem,
+which would have been shorter:
+\enquote{passar} and \enquote{klassar} end that way, and a stem also
+matches surnames---\cref{email2} contains an \enquote{Assarssons}, and
+that email is about a project, not about assistants.
 \enquote{Amanuens} needs the opposite, a boundary in front only:
 it is the head of the compounds that contract mail is written
 in---\enquote{amanuensavtal}, \enquote{amanuensanställning},
@@ -1542,7 +1557,7 @@ we grep case-insensitively, but \enquote{ta} is a verb that opens half
 of all Swedish subject lines, so that alternative opts out of the
 case-insensitivity with PCRE's [[(?-i:...)]].
 <<variables>>=
-TA_NOUN="\b(assning|asse|(lärar)?assistent(en|er|erna)?)\b"
+TA_NOUN="\b(assning|ass(e|ar|arna)|(lärar)?assistent(en|er|erna)?)\b"
 TA_NOUN="${TA_NOUN}|\bamanuens|(?-i:\bTA\b)"
 @
 
@@ -1560,11 +1575,24 @@ their lab, \enquote{amanuens} is a job title, so an email that uses it
 is about the employment---\cref{email6} asks for a contract in a single
 line with no other work word in it.
 The word is therefore in both lists and carries the test alone.
+
+An appointment can also be stated rather than described, and then there
+is no word to find:
+\cref{email10} says who, from when to when, and at what share of full
+time, and nothing else.
+That line is the last hint.
+A percentage on its own would be too little---\cref{email3} is a student
+asking about an \enquote{omdöme på 0\%} in Canvas---so the hint is the
+whole shape: two dates and then a percentage.
+Over the examples in this document it occurs in the four emails about an
+appointment and nowhere else.
 <<variables>>=
 TA_EMPLOYMENT="\b(jobba|arbeta|anställ|ansök|praktik|intresse|rekryter"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|arvode|lön\b)"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|\b(bli|vara|varit|som)\s+(lärar)?assistent"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|\bamanuens"
+TA_EMPLOYMENT="${TA_EMPLOYMENT}|[0-9]{4}(-[0-9]{2}){2}\s+"
+TA_EMPLOYMENT="${TA_EMPLOYMENT}[0-9]{4}(-[0-9]{2}){2}\s+[0-9]{1,3}\s*%"
 @
 
 \subsection{User-defined label rules}\label{LabelRules}
@@ -1730,6 +1758,23 @@ The conjunction in the assistant test is what keeps a student's mention
 of their assistant from being taken for assistant matters:
 \begin{pycode}
 email = "Subject: Re: LAB2\n\nAssistenten sa att det var godkänt.\n"
+output = subprocess.run(["./edumail", "labels"], input=email.encode(),
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+Our own note about new assistants (\cref{email10}) needs both of the
+additions above, the slang plural and the appointment line, and then
+names the course the assistants are taken on for:
+\begin{pycode}
+output = subprocess.run(["./edumail", "labels", "email10.txt"],
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+The conjunction still holds for the slang, which students use too:
+without evidence of an appointment, \enquote{assarna} is a remark about
+who grades, and the email stays a module matter.
+\begin{pycode}
+email = "Subject: LAB1\n\nAssarna har inte rättat min labb än.\n"
 output = subprocess.run(["./edumail", "labels"], input=email.encode(),
                         capture_output=True, env=norules)
 print_verbatim(output.stdout)
