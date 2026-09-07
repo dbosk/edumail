@@ -354,6 +354,14 @@ output = subprocess.run(["./nymutt", "derive", "email9.txt"],
                         capture_output=True, env=demoenv)
 print_verbatim(output.stdout)
 \end{pycode}
+The eleventh is the administrator's message about the subscriptions.
+[[edumail]] finds no course in it---it is not from a student, so it
+guesses only from the subject---and the rules above supply the rest:
+\begin{pycode}
+output = subprocess.run(["./nymutt", "derive", "email11.txt"],
+                        capture_output=True, env=demoenv)
+print_verbatim(output.stdout)
+\end{pycode}
 
 \subsection{Opening an email}
 
@@ -983,6 +991,8 @@ service@eecs\.kth\.se                               admin
 pa-.*@.*\.kth\.se                                   admin
 Anna\sOlanås\sJansson                               admin hr
 Hanna\sHolmqvist                                    admin hr
+Anna\sMammitzsch                                    admin
+Marlene\sRohdin                                     admin
 it-support@kth\.se                                  it
 subject:ID:KTH-INC                                  admin
 e-learning@kth\.se                                  canvas admin
@@ -1103,6 +1113,18 @@ resubmissions are [[rest(er\b|labb|uppgift|inlämn)]].
 The remaining topics keep the [[subject:]] prefix; words like
 \enquote{timmar}, \enquote{sjuk} or \enquote{fråga} are far too common
 in running text to be labels on their own.
+The subscriptions we pay for by card are administration twice over:
+the tools are ours, but the card is the school's, and the mail comes
+from whoever holds it.
+The rule carries both labels for that reason, and matches the word in
+either language, since the same matter is written about in Swedish as
+\enquote{abonnemang}.
+The service centre gets a rule of its own because the people there
+change---the mail that prompted this was one coordinator handing over
+to another---while the desk stays.
+[[edumail]]'s example emails end with such a message, and the two rules
+are all it should yield.
+
 Cron mail is the one sender-based rule among the topics, and it is a
 [[stream:]] rule:
 reading a job's output is administration whatever the job printed, and
@@ -1132,6 +1154,8 @@ stream:Cron\sDaemon                                 admin
 subject:cron.*dbosk@rpi                             admin scripts
 stream:Calendly                                     meeting
 subject:receipt\sfrom\sAnthropic                    expenses admin
+subscription|abonnemang                             subscription admin
+service\s?cent(er|re)                               admin
 subject:(reviewer.*invitation|invitation.*reviewer) reviewing research
 stream:KTH\sSurvey                                  survey
 @

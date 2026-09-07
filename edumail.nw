@@ -436,6 +436,46 @@ We also don't want to match the reply line.
 IGNORE_HEADERS="${IGNORE_HEADERS}|On .* wrote:$"
 @
 
+\subsection{Telling a student's email from a colleague's}
+\label{StudentDisclaimer}
+
+One line in an email is worth reading for who wrote it rather than for
+what it says.
+KTH appends a disclaimer to mail from outside---\enquote{avsändaren
+inte är anställd vid Kungliga Tekniska högskolan}, in Swedish and
+English---and it is the mail system, not the sender, that puts it
+there.
+<<functions>>=
+is_student() {
+  local file=$(file_or_stdin "$1")
+  grep -qiE "${STUDENT_DISCLAIMER}" "$file"
+}
+<<variables>>=
+STUDENT_DISCLAIMER="inte är anställd vid Kungliga Tekniska"
+STUDENT_DISCLAIMER="${STUDENT_DISCLAIMER}|is not employed by KTH"
+@
+
+The test reads the raw email rather than the cleaned one, and it does
+not care whether the line is quoted:
+in a reply to a student the disclaimer sits inside the quoted message,
+which is exactly the case we want to recognise.
+
+What the line proves runs one way only.
+It is there because the sender is not an employee, so seeing it settles
+that a student wrote the email; \emph{not} seeing it settles nothing,
+since it is a recent addition and the mail may be old or forwarded.
+\Cref{email2,email3} are student emails without it.
+Everything below therefore uses [[is_student]] to license a guess, never
+to forbid one.
+
+The line says something sharper than \enquote{a student}, which is
+worth recording even though nothing uses it yet:
+the sender is not employed \emph{by KTH}.
+A student who already assists on a course is an employee and loses the
+disclaimer, so on mail about assistants the line separates an applicant
+from someone who holds a position---\cref{email5}, an application, has
+it, and the contract thread (\cref{email6,email7,email8}) does not.
+
 \subsection{Extracting course identifiers from clean email}
 
 This leaves us with the following construction.
@@ -506,6 +546,7 @@ Members are named by nick name, the shorter and more stable of the two names.
 <<functions>>=
 course_families() {
   local file=$(file_or_stdin "$1")
+  <<narrow [[file]] to what we may guess from>>
   if <<test for datintro terms>>; then
     echo "datintro progd"
   fi
@@ -521,6 +562,47 @@ course_families() {
 }
 @ Note that we don't use [[elif]]: a student might write about several courses 
 in one email.
+
+\begin{example}\label{email11}
+An administrator writes about the credit card that pays for our
+subscriptions.
+\inputminted[highlightlines={4,21,44,65,83}]{text}{email11.txt}
+No course is named and none is meant.
+\end{example}
+
+These keywords are ordinary words, and that is the point:
+they are what a student writes who has not named the course.
+It is also their danger, because an email is more than what its author
+wrote.
+Under a colleague's signature stands the name of our school, which ends
+in \enquote{Computer Science}, and that is the science course's keyword;
+below it the quoted thread and the ordinary English of administration.
+\Cref{email11} collects three such hits and comes out belonging to four
+courses, having nothing to do with any of them.
+
+So we let the sender decide how far the guess may reach.
+When the disclaimer tells us a student wrote the email
+(\cref{StudentDisclaimer}), we search all of it, as before.
+Otherwise we search the subject line alone:
+a student who describes a course does it in the subject too---and the
+three false hits in \cref{email11} are all in the body.
+This is a restriction on guessing only.
+Course codes and nick names are read from the whole email whoever wrote
+it, since naming a course is deliberate.
+<<narrow [[file]] to what we may guess from>>=
+if ! is_student "$file"; then
+  local subject=$(mktemp)
+  grep -i "^Subject: " "$file" > "$subject"
+  file="${subject}"
+fi
+@ Rewriting [[file]] rather than the tests keeps the keywords in one
+place:
+[[clean]] leaves a subject line alone, so the four tests below read the
+narrowed email without knowing that it was narrowed.
+It also has to be here and not in [[<<look for>>]], which
+[[assignment_groups]] and the assistant test share:
+\cref{email10} states its appointment in the body, and narrowing that
+test to the subject would lose it.
 
 The course code of each nick name is a table.
 <<variables>>=
@@ -734,13 +816,13 @@ are in English---although Swedish students sometimes write their emails in
 Swedish if they have figured out that I'm fluent in Swedish.
 <<test for programming terms>>=
    <<look for>> "programm?ering|python|DD1310|DD1317" \
-|| <<look for>> "datorprov|projekt|p-uppgift|gransk|spec" \
+|| <<look for>> "datorprov|projekt|p-uppgift|gransk|\bspec" \
 || <<look for>> "lab(b|oration) [1-6]|Excel" \
 || <<look for>> "restlab"
 <<test for datintro terms>>=
    <<look for>> "data?intro|DD13(01|37)" \
 || <<look for>> "ssh|terminal|student-shell|bash|shell|Public" \
-|| <<look for>> "rättning|s[ck]ript" \
+|| <<look for>> "rättning|\bs[ck]ript" \
 || <<look for>> "git|latex"
 <<test for crypto terms>>=
    <<look for>> "[kc]rypto|DD2520" \
@@ -929,7 +1011,7 @@ LAB1 for the programming course is a series of labs.
 <<look for>> "datorprov|(kontroll|kort)skrivning|prov|tenta"
 @ LAB3 is the project assignment.
 <<test for programming LAB3 terms>>=
-<<look for>> "projekt|p-uppgift|gransk|spec"
+<<look for>> "projekt|p-uppgift|gransk|\bspec"
 @ KAL1 is the Excel part, consists of four labs in Excel.
 <<test for programming KAL1 terms>>=
 <<look for>> "Excel"
@@ -1793,6 +1875,24 @@ print_verbatim("\n".join(lines))
 \end{pycode}
 What the rules add to the thread is shown with the seed rules in the
 [[nymutt]] documentation.
+
+\Cref{email11} is what the guessing looked like before the sender
+decided its reach: it used to name four courses and three of their
+modules, on \enquote{sub\emph{script}ion},
+\enquote{e\emph{spec}ially} and the \enquote{Computer Science} of the
+school in the signature.
+Now it names none, and without a rules file there is nothing left to
+say about it:
+\begin{pycode}
+output = subprocess.run(["./edumail", "labels", "email11.txt"],
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout or b"(nothing)\n")
+\end{pycode}
+The first two of those hits were bad matching rather than bad reach:
+\enquote{script} was inside \enquote{subscription} and \enquote{spec}
+inside \enquote{especially}, so both keywords now require a word
+boundary in front.
+That matters for the emails we still read in full, the students'.
 
 \Cref{email9} shows the guesses at work on a program's output, and what
 a [[stream:]] rule does about them.
