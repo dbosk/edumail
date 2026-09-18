@@ -193,11 +193,35 @@ We therefore never use [[nytid track stop]]'s batch semantics (stop the
 most recent batch), which could hit someone else's batch; we always
 stop explicitly named labels, and only names taken from our own record.
 
-That record is a file, [[current]], holding one label per line, sorted.
-Sorted, because the functions below compare label sets with [[comm]],
-which requires sorted input; keeping the file sorted at every write
-means we never have to remember to sort at the reads.
-The file lives in a per-session directory:
+That record is a file, [[current]], holding one label per line.
+The functions below compare label sets with [[comm]], which requires
+sorted input---and \emph{sorted} is less obvious than it sounds.
+[[sort]] orders by the locale's collation, and in, say, a British
+locale that ignores case: [[email]] comes before [[TA-management]].
+[[comm]] must check its input against the same order, and GNU's does;
+but the Rust reimplementation of the coreutils that some distributions
+now ship compares bytes, so there [[TA-management]] must come first.
+With those tools, in such a locale, the very output of [[sort]] makes
+[[comm]] complain that
+\enquote{file 2 is not in sorted order}---and, worse, compute the wrong
+difference, so that we would stop or start the wrong labels.
+The C locale is the one order on which every implementation of both
+tools agrees, so every sort and every comparison of labels goes through
+these two functions.
+<<functions>>=
+sort_labels() {
+  LC_ALL=C sort -u
+}
+
+comm_labels() {
+  LC_ALL=C comm "$@"
+}
+@ We set the locale for these two commands only, not for the whole
+script:
+the script also launches the user's editor (\cref{EditorWrapper}),
+which must see the real locale.
+
+The [[current]] file lives in a per-session directory:
 the [[mutt]] wrapper exports [[NYMUTT_SESSION]] (its process id),
 so two mail clients running at the same time keep separate books.
 <<variables>>=
@@ -218,9 +242,12 @@ Nothing in the core open/close cycle needs it; it exists for [[edit]]
 
 Reading the record must work before the first [[open]] has created it,
 so a missing file just means we own nothing yet.
+We sort at the read, although every write below sorts too:
+the file may have been written by a session that started before an
+upgrade, in the locale's order, and sorting a dozen lines costs nothing.
 <<functions>>=
 current_labels() {
-  [[ -r "${CURRENT}" ]] && cat "${CURRENT}"
+  [[ -r "${CURRENT}" ]] && sort_labels < "${CURRENT}"
   return 0
 }
 @
@@ -249,7 +276,7 @@ start_labels() {
             | tr -d ' ' | tr ',' '\n')
   echo "${started}" | grep -v '^$' > "${LAST_BATCH}"
   (current_labels; echo "${started}") \
-    | sort -u | grep -v '^$' > "${CURRENT}.new"
+    | sort_labels | grep -v '^$' > "${CURRENT}.new"
   mv "${CURRENT}.new" "${CURRENT}"
 }
 @ We consume [[nytid]]'s stdout (the parsing does), which has the nice
@@ -269,11 +296,11 @@ stop_labels() {
   [[ $# -eq 0 ]] && return 0
   mkdir -p "${STATE_DIR}"
   nytid track stop "$@" > /dev/null || true
-  comm -23 <(current_labels) <(printf '%s\n' "$@" | sort -u) \
+  comm_labels -23 <(current_labels) <(printf '%s\n' "$@" | sort_labels) \
     > "${CURRENT}.new"
   mv "${CURRENT}.new" "${CURRENT}"
-  comm -23 <(sort -u "${LAST_BATCH}" 2>/dev/null) \
-    <(printf '%s\n' "$@" | sort -u) > "${LAST_BATCH}.new"
+  comm_labels -23 <(sort_labels 2>/dev/null < "${LAST_BATCH}") \
+    <(printf '%s\n' "$@" | sort_labels) > "${LAST_BATCH}.new"
   mv "${LAST_BATCH}.new" "${LAST_BATCH}"
 }
 @
@@ -283,15 +310,16 @@ stop_labels() {
 Derivation is [[edumail]]'s job; the script adds only the base
 [[email]] label, so that every opened email is tracked even when
 [[edumail]] recognizes nothing.
-The output is sorted and duplicate-free for the same reason [[current]]
-is: the callers compare label sets with [[comm]].
+The output goes through [[sort_labels]], since the callers compare
+label sets with [[comm_labels]]; [[edumail]]'s own output is sorted too,
+but in the locale's order.
 <<functions>>=
 derive() {
   local file=$(file_or_stdin "$1")
   (
     echo "email"
     "${EDUMAIL}" labels "$file"
-  ) | sort -u
+  ) | sort_labels
 }
 @
 
@@ -381,8 +409,8 @@ open() {
   local derived=$(derive "$file")
   mkdir -p "${STATE_DIR}"
   : > "${LAST_BATCH}"
-  stop_labels $(comm -23 <(current_labels) <(echo "${derived}"))
-  start_labels $(comm -13 <(current_labels) <(echo "${derived}"))
+  stop_labels $(comm_labels -23 <(current_labels) <(echo "${derived}"))
+  start_labels $(comm_labels -13 <(current_labels) <(echo "${derived}"))
 }
 @ We reset [[last-batch]] before anything else:
 if every derived label carries over and nothing needs starting, the
@@ -431,8 +459,8 @@ editor() {
     exec "${real_editor}" "$@"
   fi
   local labels
-  labels=$( (derive "$1"; echo writing) | sort -u \
-            | comm -23 - <(active_labels) )
+  labels=$( (derive "$1"; echo writing) | sort_labels \
+            | comm_labels -23 - <(active_labels) )
   if [[ -z "${labels}" ]]; then
     exec "${real_editor}" "$@"
   fi
@@ -475,7 +503,7 @@ integration creates contains one.
 <<functions>>=
 active_labels() {
   nytid track status 2>/dev/null \
-  | sed -n 's/^  \([^:]*\):.*/\1/p' | sort -u
+  | sed -n 's/^  \([^:]*\):.*/\1/p' | sort_labels
 }
 @
 
@@ -494,9 +522,9 @@ edit() {
   echo "Tracked labels for this email: ${current:-none}"
   local edited
   read -e -p "Edit labels: " -i "${current}" edited || return 0
-  local wanted=$(printf '%s\n' ${edited} | sort -u)
-  local added=$(comm -13 <(current_labels) <(echo "${wanted}"))
-  local removed=$(comm -23 <(current_labels) <(echo "${wanted}"))
+  local wanted=$(printf '%s\n' ${edited} | sort_labels)
+  local added=$(comm_labels -13 <(current_labels) <(echo "${wanted}"))
+  local removed=$(comm_labels -23 <(current_labels) <(echo "${wanted}"))
   if nytid_can_edit_batches; then
     relabel "${added}" "${removed}"
   else
@@ -571,10 +599,10 @@ if [[ -n "${added}" ]]; then
      && nytid track edit --containing "${anchor}" \
           $(printf -- '-a %s\n' ${added}) > /dev/null 2>&1
   then
-    (current_labels; echo "${added}") | sort -u > "${CURRENT}.new"
+    (current_labels; echo "${added}") | sort_labels > "${CURRENT}.new"
     mv "${CURRENT}.new" "${CURRENT}"
-    (sort -u "${LAST_BATCH}"; echo "${added}") \
-      | sort -u > "${LAST_BATCH}.new"
+    (sort_labels < "${LAST_BATCH}"; echo "${added}") \
+      | sort_labels > "${LAST_BATCH}.new"
     mv "${LAST_BATCH}.new" "${LAST_BATCH}"
   else
     start_labels ${added}
@@ -596,9 +624,10 @@ for label in ${removed}; do
     > /dev/null 2>&1 \
   || nytid track stop "${label}" > /dev/null 2>&1 \
   || true
-  comm -23 <(current_labels) <(echo "${label}") > "${CURRENT}.new"
+  comm_labels -23 <(current_labels) <(echo "${label}") > "${CURRENT}.new"
   mv "${CURRENT}.new" "${CURRENT}"
-  comm -23 <(sort -u "${LAST_BATCH}" 2>/dev/null) <(echo "${label}") \
+  comm_labels -23 <(sort_labels 2>/dev/null < "${LAST_BATCH}") \
+    <(echo "${label}") \
     > "${LAST_BATCH}.new"
   mv "${LAST_BATCH}.new" "${LAST_BATCH}"
 done
