@@ -1256,14 +1256,16 @@ A better idea is to make [[-a]] and [[-A]] not mutually exclusive in
 [[canvaslms]].
 <<specify assignment or assignment groups if they exist>>=
 echo '  -a "${ASSIGN}" \'
-echo '  -A "${ASSIGN_GRPS}" \'
+echo "  -A $(submission_groups "$file") \\"
 <<echo the needed variables>>=
 echo "ASSIGN=\"$(assignments $file)\""
 echo "ASSIGN_GRPS=\"$(ordinary_groups $file)\""
 @ For most courses, [[ordinary_groups]] gives the same as
-[[assignment_groups]].
-For tilkry it leaves LAB1 out, since LAB1 needs a summary of its own
-(\cref{GradingSchemes}).
+[[assignment_groups]], and [[submission_groups]] simply gives
+[[${ASSIGN_GRPS}]].
+For tilkry, [[ordinary_groups]] leaves LAB1 out, since LAB1 needs a
+summary of its own; [[submission_groups]] puts it back, since we still
+want to see the LAB1 submissions (\cref{GradingSchemes}).
 
 
 \subsection{Generate the restlabb command}\label{RestlabbSection}
@@ -1454,8 +1456,9 @@ ordinary_groups() {
 }
 <<variables>>=
 TILKRY_GROUP_DEFAULT="(INL|SEM)[0-9]+"
-@ The price is that [[ASSIGN_GRPS]] also leaves LAB1 out of the
-[[canvaslms submissions]] command (\cref{CanvasCommand}) for tilkry.
+@ But [[ASSIGN_GRPS]] is also what the [[canvaslms submissions]] command
+(\cref{CanvasCommand}) lists, and there we do want LAB1.
+We'll get back to that once we know which calls an email needs.
 
 We call each such call a \emph{part}.
 [[summary_parts]] decides which parts an email needs:
@@ -1481,6 +1484,25 @@ summary_parts() {
 @ The final [[return 0]] is there because the test on the line before it
 is the last command: when it fails, the function would otherwise fail
 too.
+
+Now we can give LAB1 back to the [[canvaslms submissions]] command.
+It should list the submissions of the groups that the parts summarize:
+LAB1 for the LAB1 part, [[ASSIGN_GRPS]] for the ordinary part.
+We don't simply add LAB1 to every tilkry email:
+when LAB1 is all the student wrote about, the ordinary part is skipped, and
+listing the submissions of its default groups would only be noise.
+The output keeps [[${ASSIGN_GRPS}]] a variable, so that correcting it by
+hand still reaches the submissions command.
+<<functions>>=
+submission_groups() {
+  local file=$(file_or_stdin "$1")
+  case "$(summary_parts "$file" | tr '\n' ' ')" in
+    "LAB1 ordinary ") echo '"(LAB1|${ASSIGN_GRPS})"';;
+    "LAB1 ")          echo 'LAB1';;
+    *)                echo '"${ASSIGN_GRPS}"';;
+  esac
+}
+@
 
 The two parts only differ in two options: which assignment groups ([[-A]])
 and which summary module ([[-S]]).
