@@ -305,7 +305,7 @@ stop_labels() {
 }
 @
 
-\subsection{Deriving labels}
+\subsection{Deriving labels}\label{Derive}
 
 Derivation is [[edumail]]'s job; the script adds only the base
 [[email]] label, so that every opened email is tracked even when
@@ -359,8 +359,9 @@ The last three examples are a thread about an assistant's contract:
 we ask the personnel office for it, the assistant replies, the office
 replies.
 [[edumail]] recognizes all three as assistant matters, and the seed
-rules add [[admin]] for the support desk on the two emails it is party
-to; the assistant's \enquote{rättat} in the second matches the rules'
+rules add [[admin]] and [[hr]] for the personnel office's support desk
+on the two emails it is party to; the assistant's \enquote{rättat} in
+the second matches the rules'
 examination line, but [[edumail]] discards that label for mail about
 the course as a whole.
 No course appears, because none is named: the thread is about a
@@ -390,6 +391,28 @@ output = subprocess.run(["./nymutt", "derive", "email11.txt"],
                         capture_output=True, env=demoenv)
 print_verbatim(output.stdout)
 \end{pycode}
+The thirteenth is a reminder to the personnel office about an hourly
+contract, three lines on top of a long thread.
+[[edumail]] reads a thread only as far as the message answered, and the
+rules read what [[edumail]] hands them, so they see no more of it.
+To show what that spares us we run it twice, first as it is and then
+with the whole thread read, the way it used to be:
+\begin{pycode}
+lines = []
+for depth, name in [("1", "as far as the message answered"),
+                    ("99", "the whole thread")]:
+    output = subprocess.run(["./nymutt", "derive", "email13.txt"],
+                            capture_output=True,
+                            env=dict(demoenv, QUOTE_DEPTH=depth))
+    lines.append(f"{name}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+The desk in [[To:]] gives [[admin]] and [[hr]] either way.
+The whole thread adds a second course and a [[programme]], both from
+a colleague's message of a year before that was quoted along; with the
+colleague's real name in place of the pseudonym, the seed's rule for
+that name would have added [[colleague]] from the attribution line as
+well.
 
 \subsection{Opening an email}
 
@@ -1007,6 +1030,18 @@ We accept the latter:
 an email that talks about a colleague by full name is usually about that
 colleague's matter, and the names are long enough not to occur by
 accident.
+That holds for what the author wrote, not for the thread quoted
+below it, where a name stands in an attribution line for having once
+replied; [[edumail labels]] therefore hands the rules the thread only
+as far as the message answered (the thirteenth example of \cref{Derive}
+shows the difference).
+
+The personnel office is a role within a role:
+its people and its support desk are [[admin]] like the other desks, and
+[[hr]] besides, so that the time spent on contracts can be told from
+the time spent on rooms and schedules.
+The desk needs the label as much as the people do, since it is the desk
+we write to and the desk that answers.
 Where the scoring file had only a username, the name came from
 [[kthutils ug user <username>]], which is also how to extend the list.
 <<[[labels.rules]]>>=
@@ -1016,7 +1051,8 @@ schema@admin\.kth\.se                               schedule admin
 @timeedit\.com                                      schedule admin
 education-support@eecs\.kth\.se                     admin examination
 service@eecs\.kth\.se                               admin
-(student-support|hr-support)@eecs\.kth\.se          admin
+student-support@eecs\.kth\.se                       admin
+hr-support@eecs\.kth\.se                            admin hr
 pa-.*@.*\.kth\.se                                   admin
 Anna\sOlanås\sJansson                               admin hr
 Hanna\sHolmqvist                                    admin hr

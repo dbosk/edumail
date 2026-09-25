@@ -443,10 +443,13 @@ There are some lines that we don't want to match anything on.
 For example, we don't want to match the email identifier in the [[In-Reply-To]] 
 header and not the year in the [[Date]] header.
 For this, we construct a filter which removes these lines.
+(One line of the body goes the same way, for a reason of its own that
+we give in \cref{StudentDisclaimer}.)
 <<functions>>=
 clean() {
   local file=$(file_or_stdin "$1")
-  grep -vE "^(${IGNORE_HEADERS})" "$file"
+  grep -vE "^(${IGNORE_HEADERS})" "$file" \
+  | <<drop the line the mail system wrote>>
 }
 <<variables>>=
 IGNORE_HEADERS="In-Reply-To:|References:|Message-ID:|Content-Type:"
@@ -490,6 +493,25 @@ since it is a recent addition and the mail may be old or forwarded.
 \Cref{email2,email3} are student emails without it.
 Everything below therefore uses [[is_student]] to license a guess, never
 to forbid one.
+
+Reading the line for who wrote the email is one half of treating it
+right; the other is not to read it for what it says.
+Its words are the mail system's, and one of them is
+\enquote{anställd}---an employment word, and the assistant test
+(\cref{LabelsSection}) looks for those.
+With the line left in, every student has written about employment, and
+the test's other half decides alone:
+a student who mentions the assistant who graded their lab has then
+sent us assistant mail.
+So [[clean]] drops the line, quoted or not, and every keyword test
+reads the email without it.
+<<drop the line the mail system wrote>>=
+grep -viE "${STUDENT_DISCLAIMER}"
+@ [[is_student]] is unaffected, since it reads the raw email.
+Only the line with the phrase goes.
+The rest of the disclaimer---who answers for the opinions in the
+message---matches nothing we look for, and a pattern wide enough to
+cover it would sooner or later cover something a student wrote.
 
 The line says something sharper than \enquote{a student}, which is
 worth recording even though nothing uses it yet:
@@ -1660,9 +1682,18 @@ say, and skip the guesses.
 Which senders are programs is nothing this script can know---the list
 changes with every tool we adopt---so the rules file says so, with a
 [[stream:]] rule (\cref{LabelRules}).
+
+One restriction applies to all of the above.
+An email carries its thread along, quoted below what its author wrote,
+and a thread drifts: what stood in it a year ago is not what we spend
+time on today.
+So before anything else we cut the email down to the message and the
+one it answers (\cref{RecentPart}), and every test below reads only
+that.
 <<functions>>=
 labels() {
   local file=$(file_or_stdin "$1")
+  <<narrow [[file]] to the message and the one it answers>>
   (
     if is_stream "$file"; then
       <<labels from what a stream states>>
@@ -1831,6 +1862,112 @@ TA_EMPLOYMENT="${TA_EMPLOYMENT}|[0-9]{4}(-[0-9]{2}){2}\s+"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}[0-9]{4}(-[0-9]{2}){2}\s+[0-9]{1,3}\s*%"
 @
 
+The other form of employment, by the hour, has a word of its own, and
+one more email from our side of such a thread shows what happens to it.
+\begin{example}\label{email13}
+We remind the personnel office of an assistant's contract, on top of
+the thread so far.
+\inputminted[highlightlines={4,16,26,33,40,43,46}]{text}{email13.txt}
+We wrote three lines.
+The subject says \enquote{timanställning} and the message we answer
+\enquote{timanställd}; the only \enquote{amanuens} is a question two
+messages down, and below that the thread is a year older and about
+someone else's course.
+\end{example}
+Nothing in the lists above matches \enquote{timanställd}.
+The stem \enquote{anställ} is there, but behind a word boundary, and
+inside a compound there is none.
+\Cref{email8} has the word too; there \enquote{amanuens} carried the
+test, so nothing showed.
+In \cref{email13} it also carried the test, from a question we asked in
+passing, which is the right answer for the wrong reason: a thread
+without that question would have been no assistant matter at all.
+
+Dropping the boundary would not be enough, since the test wants a noun
+as well and the email offers none within reach.
+We treat the word like \enquote{amanuens} instead:
+\enquote{timanställd} and \enquote{timarvoderad} name a form of
+employment, no student writes them about a lab, so the stem goes in
+both lists and carries the test alone.
+Here the boundary in front is right, as both are the start of a word.
+<<variables>>=
+TA_HOURLY="\btim(anställ|arvoder)"
+TA_NOUN="${TA_NOUN}|${TA_HOURLY}"
+TA_EMPLOYMENT="${TA_EMPLOYMENT}|${TA_HOURLY}"
+@
+
+\subsection{How much of the thread to read}\label{RecentPart}
+
+\Cref{email13} is three lines of message and forty of thread, and the
+thread is where its labels used to come from.
+Counting the [[>]] in front of a line gives its depth: what we wrote
+is at depth zero, the message we answer at one, and so on down.
+Read that way, the email says something different at every depth:
+\begin{description}
+\item[Depth 0] says that a contract is late, and nothing more.
+\item[Depth 1] names the course, DD1317, and the form of employment.
+\item[Depth 2] asks about \enquote{amanuens}.
+\item[Depth 3 and below] is last year's thread: a colleague's course,
+  DD1310, a programme code from its booking sheet, the colleague's name
+  in an attribution line.
+\end{description}
+All of the last item became labels---another course, and with a rules
+file (\cref{LabelRules}) a programme and a colleague---and none of it
+is what the email is about.
+Naming a course is deliberate, we said when we decided to read course
+codes from the whole email; but it is deliberate for the one who wrote
+it, in the message they wrote it in.
+
+So [[labels]] reads a thread only as far as the message answered.
+That one level we need.
+A reply is about what it replies to:
+our three lines carry no course and no employment word, the message
+above them carries both, and a reply to a student's question should be
+tracked like the question.
+It is also where the student's disclaimer stands when we reply to a
+student (\cref{StudentDisclaimer}).
+Beyond that level each step adds less of the matter at hand and more
+of where the thread came from.
+<<functions>>=
+recent() {
+  local file=$(file_or_stdin "$1")
+  awk -v max="${QUOTE_DEPTH}" '{
+    prefix = $0
+    sub(/[^> ].*$/, "", prefix)
+    if (gsub(/>/, "", prefix) <= max) print
+  }' "$file"
+}
+<<variables>>=
+QUOTE_DEPTH="${QUOTE_DEPTH:-1}"
+@ The prefix is whatever precedes the first character that is neither
+[[>]] nor a space, which covers both [[> >]] and [[>>]]; [[gsub]]
+returns the number of [[>]] it removed from it, and that is the depth.
+The headers are at depth zero, so the [[from:]] and [[subject:]] rules
+still find them.
+The depth can be set from the environment, like the rules file, to see
+what a different cut would do---we do that in \cref{LabelsTesting}.
+
+The cut is at one and not at two for a reason that \cref{email13} also
+shows.
+Mail clients re-wrap quoted text, and the tail of a wrapped line loses
+the markers it had:
+line 46 stands four messages down and counts as depth two.
+A deeper cut lets such fragments in, and that one names DD1310.
+The same weakness sets the limit of the method:
+a client that quotes by indentation, or puts the older messages under a
+\enquote{Original Message} header as in \cref{email8}, leaves the whole
+thread at depth zero, and we read all of it as before.
+
+As with the guessing, we rewrite [[file]] and leave the tests alone.
+<<narrow [[file]] to the message and the one it answers>>=
+local narrowed=$(mktemp)
+recent "$file" > "${narrowed}"
+file="${narrowed}"
+@ Only [[labels]] does this.
+The results subcommands look a student up, and for that the older
+messages help: the student's identifier and the assignment may well
+stand only in the first message of the thread.
+
 \subsection{User-defined label rules}\label{LabelRules}
 
 The course and assistant tests above change rarely, so hard-coding them
@@ -1953,7 +2090,7 @@ esac | grep -qiP "${pattern}" \
   && echo "${field}" ${rule_labels}
 @
 
-\subsection{Testing on the emails}
+\subsection{Testing on the emails}\label{LabelsTesting}
 
 Let's run [[labels]] on the example emails.
 (We point [[XDG_CONFIG_HOME]] at a nonexistent directory so the author's
@@ -1998,6 +2135,19 @@ output = subprocess.run(["./edumail", "labels"], input=email.encode(),
                         capture_output=True, env=norules)
 print_verbatim(output.stdout)
 \end{pycode}
+That email is shorter than the ones students send, which end with the
+mail system's disclaimer (\cref{StudentDisclaimer}).
+Its \enquote{anställd} is an employment word, and it would complete the
+conjunction for any student who mentions an assistant, if [[clean]] did
+not drop the line.
+The same email as it actually arrives:
+\begin{pycode}
+email += ("\nObservera att avsändaren inte är anställd vid "
+          "Kungliga Tekniska högskolan.\n")
+output = subprocess.run(["./edumail", "labels"], input=email.encode(),
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
 Our own note about new assistants (\cref{email10}) needs both of the
 additions above, the slang plural and the appointment line, and then
 names the course the assistants are taken on for:
@@ -2029,6 +2179,25 @@ print_verbatim("\n".join(lines))
 \end{pycode}
 What the rules add to the thread is shown with the seed rules in the
 [[nymutt]] documentation.
+
+The reminder about the hourly contract (\cref{email13}) is where the
+cut in the thread decides the answer, so we run it at several:
+the message alone, the default, one level too many, and the whole
+thread as we used to read it.
+\begin{pycode}
+lines = []
+for depth in ["0", "1", "2", "99"]:
+    output = subprocess.run(["./edumail", "labels", "email13.txt"],
+                            capture_output=True,
+                            env=dict(norules, QUOTE_DEPTH=depth))
+    lines.append(f"{depth:>2}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+The message alone is an assistant matter on its subject, and the
+message it answers adds the course.
+One level further the re-wrapped line brings in a course that the
+email is not about, and nothing at any depth adds what the default
+lacks.
 
 \Cref{email11} is what the guessing looked like before the sender
 decided its reach: it used to name four courses and three of their
