@@ -250,15 +250,38 @@ results() {
   echo "echo"
   missing "$file" "$@"
   echo "echo"
-  restlabb "$file" "$@"
-  echo "echo"
+  if wants_restlabb "$file"; then
+    restlabb "$file" "$@"
+    echo "echo"
+  fi
   canvas "$file" "$@"
   echo "echo"
   report "$file" "$@"
 }
 @
 
-The function [[ladok]] will hide the [[ladok]] command from us, so that we 
+Not every course has a restlabb, though.
+Restlabb belongs to the introductory programming courses, [[prgm]] and
+[[prgi]]; for the other courses the restlabb lines are only noise to skip
+past, and fetching the forms is a slow round trip to KTH's servers
+(\cref{RestlabbSection}).
+So [[results]] asks for them only when the email concerns one of those two
+courses---or when we can't tell the course at all, since then it may well
+be one of them.
+The test sits in [[results]] rather than in [[restlabb]], so that calling
+[[restlabb]] directly still gives the commands for any email.
+The course candidates are those of [[course_candidates]]
+(\cref{CourseCandidates}): one nick name per line, none if the email gives
+no hint of a course.
+<<functions>>=
+wants_restlabb() {
+  local file=$(file_or_stdin "$1")
+  local nicks=$(course_candidates "$file")
+  [[ -z "${nicks}" ]] || grep -qxE "prg[im]" <<< "${nicks}"
+}
+@
+
+The function [[ladok]] will hide the [[ladok]] command from us, so that we
 can't use it.
 However, this won't be an issue since we don't need to invoke it in this 
 script.
@@ -633,7 +656,7 @@ nick_of_course_code() {
 }
 @
 
-\subsubsection{Named courses beat guessed ones}
+\subsubsection{Named courses beat guessed ones}\label{CourseCandidates}
 
 \Cref{email4,email5} tell us that a course the student \emph{names} 
 outranks anything we \emph{guess}.
@@ -910,7 +933,7 @@ We also want to extract the assignments.
 There are two alternatives: individual assignments or assignment groups (LADOK 
 modules).
 
-\subsection{Assignment groups}
+\subsection{Assignment groups}\label{AssignmentGroups}
 
 The assignment groups are the easiest to extract, they're always named 
 something like LAB1, LAB2, LAB3, \etc.
@@ -1194,7 +1217,7 @@ echo "COURSE_CODE=\"$(course_code $file)\""
 echo "STUDENT=\"$(student $file)\""
 @
 
-\subsection{Generate the [[canvaslms]] command}
+\subsection{Generate the [[canvaslms]] command}\label{CanvasCommand}
 
 For the [[canvaslms]] command we can do some output modification to make it 
 useful.
@@ -1232,7 +1255,7 @@ echo "ASSIGN_GRPS=\"$(assignment_groups $file)\""
 @
 
 
-\subsection{Generate the restlabb command}
+\subsection{Generate the restlabb command}\label{RestlabbSection}
 
 We simply grep for the student in the restlabb export.
 In fact, we want to make the same rewrites as the normal script does so that we 
@@ -1359,46 +1382,167 @@ REWRITERS=$(kthutils config forms.rewriter \
 @
 
 
+\subsection{One summary per grading scheme}\label{GradingSchemes}
+
+The missing and report commands below both use [[canvaslms results]],
+which summarizes each assignment group (LADOK module) into one grade.
+How to summarize is up to a summary module ([[-S]]).
+For most modules of our courses, [[canvaslms.grades.conjunctavgsurvey]]
+does it: every assignment must pass, the grade is the average.
+
+LAB1 of the applied crypto course (tilkry) is different.
+It consists of mandatory labs, graded P/F, and optional labs, scored
+between 0 and 2.5; the sum of the optional scores sets the grade.
+Averaging those gives garbage, so canvaslms has a summary module of its
+own for it: [[canvaslms.grades.tilkryLAB1]].
+It also knows which LAB1 labs are missing, since only the mandatory ones
+can be.
+
+But [[canvaslms results]] takes one summary module per call.
+So for tilkry we need two calls: one for LAB1 with the tilkry module, and
+one for the other modules with the ordinary.
+It's not enough to add the LAB1 call, the ordinary call must leave LAB1
+out, or it prints the garbage summary alongside the right one---and it's
+the ordinary call's LAB1 row we'd risk reporting to LADOK.
+
+\begin{example}\label{email14}
+A student of the applied crypto course writes about both LAB1 (the AES
+lab) and INL1 (the quiz).
+\inputminted[highlightlines={2,5,12}]{text}{email14.txt}
+This email needs both calls, and the ordinary one without LAB1.
+\end{example}
+
+We'll ask several times whether an email concerns tilkry, so we give the
+question a name.
+The candidates are those of [[course_candidates]] (\cref{CourseCandidates}),
+one nick name per line.
+<<functions>>=
+concerns_course() {
+  local file=$(file_or_stdin "$1")
+  course_candidates "$file" | grep -qxF "$2"
+}
+@
+
+Tilkry has two modules, LAB1 and INL1.
+So we don't have to cut LAB1 out of [[ASSIGN_GRPS]] for the ordinary
+call: we can name the modules directly and make one call per module.
+That leaves [[ASSIGN_GRPS]] as it is, for the other courses and for the
+[[canvaslms submissions]] command, which should list LAB1 too.
+<<variables>>=
+TILKRY_MODULES="LAB1 INL1"
+@
+
+We call each such call a \emph{part}.
+[[summary_parts]] decides which parts an email needs:
+[[ordinary]], the one call with [[ASSIGN_GRPS]] that we make for every
+other course, or for tilkry one part per module.
+We can skip a tilkry module the student didn't write about.
+A module is needed if the assignment groups we found
+(\cref{AssignmentGroups}) can match it---they do when the student wrote
+about it, and also by default.
+Should they match neither module, we fall back to the ordinary part, so
+that we at least get the ordinary output.
+<<functions>>=
+summary_parts() {
+  local file=$(file_or_stdin "$1")
+  if ! concerns_course "$file" tilkry; then
+    echo ordinary
+    return
+  fi
+  local groups=$(assignment_groups "$file") module found=""
+  for module in ${TILKRY_MODULES}; do
+    grep -qP "${groups}" <<< "${module}" && echo "${module}" && found=1
+  done
+  [[ -n "${found}" ]] || echo ordinary
+}
+@
+
+The parts only differ in two options: which assignment groups ([[-A]])
+and which summary module ([[-S]]).
+A tilkry part summarizes its own module, only LAB1 with the tilkry
+summary module.
+[[results_command]] prints the head of the [[canvaslms results]] command
+for a part, the missing and report commands add their own tails.
+<<functions>>=
+results_command() {
+  local part="$1"
+  local groups='"${ASSIGN_GRPS}"'
+  local module=canvaslms.grades.conjunctavgsurvey
+  if [[ "${part}" != ordinary ]]; then
+    groups="${part}"
+  fi
+  if [[ "${part}" = LAB1 ]]; then
+    module=canvaslms.grades.tilkryLAB1
+  fi
+  echo 'canvaslms results \'
+  echo '  -c "${COURSE}" \'
+  echo "  -A ${groups} \\"
+  echo '  -u "${STUDENT}" \'
+  echo "  -S ${module} \\"
+}
+@
+
+The commands for the parts follow each other in the output, so we put a
+blank line between them, just like between the commands of [[results]].
+<<separate the command for [[part]] from the previous one>>=
+[[ "${part}" != "${parts%%$'\n'*}" ]] && echo "echo"
+@ We know the first part, so we only print the blank line before the
+others.
+
+
 \subsection{Generate the missing command}
 
-We can use the [[canvaslms results --missing]] command to output any missing 
-assignments.
-We want to change the default regex for passing grades ([[-F]]) to include the 
-numbers too (for the mandatory surveys).
-We also want to add a regex for the optional assignments ([[-O]]), which we 
-prefix with \enquote{Optional:}.
+We can use the [[canvaslms results --missing]] command to output any missing
+assignments, one command per part.
 <<construct [[missing]] command from email>>=
-echo 'canvaslms results \'
-echo '  -c "${COURSE}" \'
-echo '  -A "${ASSIGN_GRPS}" \'
-echo '  -u "${STUDENT}" \'
-echo '  -S canvaslms.grades.conjunctavgsurvey \'
-echo '  --missing -F "([A-EP]|complete|[0-9.]+%?)" \'
-echo '            -O "^Optional:"'
+local part parts=$(summary_parts "$file")
+for part in ${parts}; do
+  <<separate the command for [[part]] from the previous one>>
+  results_command "${part}"
+  <<the [[--missing]] options for [[part]]>>
+done
+@
+
+For the ordinary summary module, we want to change the default regex for
+passing grades ([[-F]]) to include the numbers too (for the mandatory
+surveys).
+We also want to add a regex for the optional assignments ([[-O]]), which we
+prefix with \enquote{Optional:}.
+The tilkry module needs neither:
+it knows the grades of LAB1 and never reports an optional lab missing.
+<<the [[--missing]] options for [[part]]>>=
+if [[ "${part}" = LAB1 ]]; then
+  echo '  --missing'
+else
+  echo '  --missing -F "([A-EP]|complete|[0-9.]+%?)" \'
+  echo '            -O "^Optional:"'
+fi
 @
 
 
 \subsection{Generate the report command}
 
-Then the reporting will be similar to the above, just without the [[-M]] flag.
+Then the reporting will be similar to the above, just without the
+[[--missing]] flag.
 <<construct [[report]] command from email>>=
-echo 'canvaslms results \'
-echo '  -c "${COURSE}" \'
-echo '  -A "${ASSIGN_GRPS}" \'
-echo '  -u "${STUDENT}" \'
-echo '  -S canvaslms.grades.conjunctavgsurvey \'
+local part parts=$(summary_parts "$file")
+for part in ${parts}; do
+  <<separate the command for [[part]] from the previous one>>
+  results_command "${part}"
+  <<rewrite the course code for [[ladok]]>>
+done
 @ We also want to rewrite the first column: the course code.
 This is because we want to pipe the data to the [[ladok -v report -f]] command.
 Usually the one in Canvas contains other data as well, like the semester.
 We want to remove that and keep only the course code.
-<<construct [[report]] command from email>>=
+<<rewrite the course code for [[ladok]]>>=
 echo '| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \'
 @ Normally, that works.
 However, sometimes it doesn't.
-Some courses deviate, maybe due to being a manual merge of several course rooms 
+Some courses deviate, maybe due to being a manual merge of several course rooms
 in Canvas.
 So we add the following backup:
-<<construct [[report]] command from email>>=
+<<rewrite the course code for [[ladok]]>>=
 echo '| awk -F "\t" -v OFS="\t" -v code=$COURSE_CODE "{\$1=code; print}"'
 @
 
@@ -1430,9 +1574,19 @@ output = subprocess.run(["./edumail", "results", "email4.txt"],
                         capture_output=True)
 print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
-Finally, \cref{email5} names five courses, of which only ours remains:
+\Cref{email5} names five courses, of which only ours remains.
+That course is [[datintro]], which has no restlabb, so the restlabb
+commands are gone:
 \begin{pycode}
 output = subprocess.run(["./edumail", "results", "email5.txt"],
+                        capture_output=True)
+print_verbatim(str(output.stdout, "utf-8"))
+\end{pycode}
+Finally, \cref{email14} is about tilkry.
+There is no restlabb, and both the missing and the report commands come
+in two parts (\cref{GradingSchemes}):
+\begin{pycode}
+output = subprocess.run(["./edumail", "results", "email14.txt"],
                         capture_output=True)
 print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
