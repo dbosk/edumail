@@ -947,20 +947,12 @@ only the matching parts.
 <<functions>>=
 assignment_groups() {
   local file=$(file_or_stdin "$1")
-  (<<find assignment groups in [[file]]>>) \
-  | groups_or_default "${ASSIGNMENT_GROUP_DEFAULT}"
-}
-@ If we find no groups, we fall back to a default regex.
-(Tilkry needs another default, \cref{GradingSchemes}, which is why the
-default is an argument.)
-<<functions>>=
-groups_or_default() {
-  local default="$1"
-  local groups=$(sort -u)
+  local groups=$( (<<find assignment groups in [[file]]>>) \
+                  | sort -u )
   if [[ -n "$groups" ]]; then
     echo "$groups"
   else
-    echo "^${default}"
+    echo "^${ASSIGNMENT_GROUP_DEFAULT}"
   fi | make_disjunct_regex
 }
 <<variables>>=
@@ -1256,16 +1248,11 @@ A better idea is to make [[-a]] and [[-A]] not mutually exclusive in
 [[canvaslms]].
 <<specify assignment or assignment groups if they exist>>=
 echo '  -a "${ASSIGN}" \'
-echo "  -A $(submission_groups "$file") \\"
+echo '  -A "${ASSIGN_GRPS}" \'
 <<echo the needed variables>>=
 echo "ASSIGN=\"$(assignments $file)\""
-echo "ASSIGN_GRPS=\"$(ordinary_groups $file)\""
-@ For most courses, [[ordinary_groups]] gives the same as
-[[assignment_groups]], and [[submission_groups]] simply gives
-[[${ASSIGN_GRPS}]].
-For tilkry, [[ordinary_groups]] leaves LAB1 out, since LAB1 needs a
-summary of its own; [[submission_groups]] puts it back, since we still
-want to see the LAB1 submissions (\cref{GradingSchemes}).
+echo "ASSIGN_GRPS=\"$(assignment_groups $file)\""
+@
 
 
 \subsection{Generate the restlabb command}\label{RestlabbSection}
@@ -1436,39 +1423,25 @@ concerns_course() {
 }
 @
 
-The ordinary call gets its groups from [[ASSIGN_GRPS]], the variable we
-correct by hand when the guess is wrong.
-So the simplest way to keep LAB1 out of the ordinary call is to keep it
-out of [[ASSIGN_GRPS]]: for tilkry, [[ordinary_groups]] gives the groups
-of [[assignment_groups]] except the LAB ones.
-The default must lose LAB too, or the default regex would still match
-LAB1; LAB1 is the only LAB module of tilkry, so we drop LAB altogether.
-<<functions>>=
-ordinary_groups() {
-  local file=$(file_or_stdin "$1")
-  if ! concerns_course "$file" tilkry; then
-    assignment_groups "$file"
-    return
-  fi
-  (<<find assignment groups in [[file]]>>) \
-  | grep -v "^LAB" \
-  | groups_or_default "${TILKRY_GROUP_DEFAULT}"
-}
+Tilkry has two modules, LAB1 and INL1.
+So we don't have to cut LAB1 out of [[ASSIGN_GRPS]] for the ordinary
+call: we can name the modules directly and make one call per module.
+That leaves [[ASSIGN_GRPS]] as it is, for the other courses and for the
+[[canvaslms submissions]] command, which should list LAB1 too.
 <<variables>>=
-TILKRY_GROUP_DEFAULT="(INL|SEM)[0-9]+"
-@ But [[ASSIGN_GRPS]] is also what the [[canvaslms submissions]] command
-(\cref{CanvasCommand}) lists, and there we do want LAB1.
-We'll get back to that once we know which calls an email needs.
+TILKRY_MODULES="LAB1 INL1"
+@
 
 We call each such call a \emph{part}.
 [[summary_parts]] decides which parts an email needs:
-[[ordinary]], which is all we need for every other course, and for
-tilkry also [[LAB1]].
-We can skip a tilkry part that has nothing to summarize.
-The LAB1 part is needed only if the assignment groups we found
-(\cref{AssignmentGroups}) can match LAB1---they do when the student wrote
-about LAB1, and also by default.
-The ordinary part is needed unless LAB1 was all we found.
+[[ordinary]], the one call with [[ASSIGN_GRPS]] that we make for every
+other course, or for tilkry one part per module.
+We can skip a tilkry module the student didn't write about.
+A module is needed if the assignment groups we found
+(\cref{AssignmentGroups}) can match it---they do when the student wrote
+about it, and also by default.
+Should they match neither module, we fall back to the ordinary part, so
+that we at least get the ordinary output.
 <<functions>>=
 summary_parts() {
   local file=$(file_or_stdin "$1")
@@ -1476,36 +1449,18 @@ summary_parts() {
     echo ordinary
     return
   fi
-  local groups=$(assignment_groups "$file")
-  grep -qP "${groups}" <<< LAB1 && echo LAB1
-  [[ "${groups}" != "(LAB1)" ]] && echo ordinary
-  return 0
-}
-@ The final [[return 0]] is there because the test on the line before it
-is the last command: when it fails, the function would otherwise fail
-too.
-
-Now we can give LAB1 back to the [[canvaslms submissions]] command.
-It should list the submissions of the groups that the parts summarize:
-LAB1 for the LAB1 part, [[ASSIGN_GRPS]] for the ordinary part.
-We don't simply add LAB1 to every tilkry email:
-when LAB1 is all the student wrote about, the ordinary part is skipped, and
-listing the submissions of its default groups would only be noise.
-The output keeps [[${ASSIGN_GRPS}]] a variable, so that correcting it by
-hand still reaches the submissions command.
-<<functions>>=
-submission_groups() {
-  local file=$(file_or_stdin "$1")
-  case "$(summary_parts "$file" | tr '\n' ' ')" in
-    "LAB1 ordinary ") echo '"(LAB1|${ASSIGN_GRPS})"';;
-    "LAB1 ")          echo 'LAB1';;
-    *)                echo '"${ASSIGN_GRPS}"';;
-  esac
+  local groups=$(assignment_groups "$file") module found=""
+  for module in ${TILKRY_MODULES}; do
+    grep -qP "${groups}" <<< "${module}" && echo "${module}" && found=1
+  done
+  [[ -n "${found}" ]] || echo ordinary
 }
 @
 
-The two parts only differ in two options: which assignment groups ([[-A]])
+The parts only differ in two options: which assignment groups ([[-A]])
 and which summary module ([[-S]]).
+A tilkry part summarizes its own module, only LAB1 with the tilkry
+summary module.
 [[results_command]] prints the head of the [[canvaslms results]] command
 for a part, the missing and report commands add their own tails.
 <<functions>>=
@@ -1513,8 +1468,10 @@ results_command() {
   local part="$1"
   local groups='"${ASSIGN_GRPS}"'
   local module=canvaslms.grades.conjunctavgsurvey
+  if [[ "${part}" != ordinary ]]; then
+    groups="${part}"
+  fi
   if [[ "${part}" = LAB1 ]]; then
-    groups=LAB1
     module=canvaslms.grades.tilkryLAB1
   fi
   echo 'canvaslms results \'
