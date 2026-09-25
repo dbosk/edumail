@@ -1853,6 +1853,40 @@ TA_EMPLOYMENT="${TA_EMPLOYMENT}|[0-9]{4}(-[0-9]{2}){2}\s+"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}[0-9]{4}(-[0-9]{2}){2}\s+[0-9]{1,3}\s*%"
 @
 
+The other form of employment, by the hour, has a word of its own, and
+one more email from our side of such a thread shows what happens to it.
+\begin{example}\label{email13}
+We remind the personnel office of an assistant's contract, on top of
+the thread so far.
+\inputminted[highlightlines={4,16,26,33,40,43,46}]{text}{email13.txt}
+We wrote three lines.
+The subject says \enquote{timanställning} and the message we answer
+\enquote{timanställd}; the only \enquote{amanuens} is a question two
+messages down, and below that the thread is a year older and about
+someone else's course.
+\end{example}
+Nothing in the lists above matches \enquote{timanställd}.
+The stem \enquote{anställ} is there, but behind a word boundary, and
+inside a compound there is none.
+\Cref{email8} has the word too; there \enquote{amanuens} carried the
+test, so nothing showed.
+In \cref{email13} it also carried the test, from a question we asked in
+passing, which is the right answer for the wrong reason: a thread
+without that question would have been no assistant matter at all.
+
+Dropping the boundary would not be enough, since the test wants a noun
+as well and the email offers none within reach.
+We treat the word like \enquote{amanuens} instead:
+\enquote{timanställd} and \enquote{timarvoderad} name a form of
+employment, no student writes them about a lab, so the stem goes in
+both lists and carries the test alone.
+Here the boundary in front is right, as both are the start of a word.
+<<variables>>=
+TA_HOURLY="\btim(anställ|arvoder)"
+TA_NOUN="${TA_NOUN}|${TA_HOURLY}"
+TA_EMPLOYMENT="${TA_EMPLOYMENT}|${TA_HOURLY}"
+@
+
 \subsection{User-defined label rules}\label{LabelRules}
 
 The course and assistant tests above change rarely, so hard-coding them

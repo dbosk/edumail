@@ -12,6 +12,8 @@ mutt.sh
 labels.rules
 nymutt.pdf
 nymutt.tex
+# raw threads behind the pseudonymised examples: real names, never commit
+email*-thread.txt
 
 
 ## Core latex/pdflatex auxiliary files:
