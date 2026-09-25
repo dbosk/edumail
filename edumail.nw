@@ -1682,9 +1682,18 @@ say, and skip the guesses.
 Which senders are programs is nothing this script can know---the list
 changes with every tool we adopt---so the rules file says so, with a
 [[stream:]] rule (\cref{LabelRules}).
+
+One restriction applies to all of the above.
+An email carries its thread along, quoted below what its author wrote,
+and a thread drifts: what stood in it a year ago is not what we spend
+time on today.
+So before anything else we cut the email down to the message and the
+one it answers (\cref{RecentPart}), and every test below reads only
+that.
 <<functions>>=
 labels() {
   local file=$(file_or_stdin "$1")
+  <<narrow [[file]] to the message and the one it answers>>
   (
     if is_stream "$file"; then
       <<labels from what a stream states>>
@@ -1887,6 +1896,78 @@ TA_NOUN="${TA_NOUN}|${TA_HOURLY}"
 TA_EMPLOYMENT="${TA_EMPLOYMENT}|${TA_HOURLY}"
 @
 
+\subsection{How much of the thread to read}\label{RecentPart}
+
+\Cref{email13} is three lines of message and forty of thread, and the
+thread is where its labels used to come from.
+Counting the [[>]] in front of a line gives its depth: what we wrote
+is at depth zero, the message we answer at one, and so on down.
+Read that way, the email says something different at every depth:
+\begin{description}
+\item[Depth 0] says that a contract is late, and nothing more.
+\item[Depth 1] names the course, DD1317, and the form of employment.
+\item[Depth 2] asks about \enquote{amanuens}.
+\item[Depth 3 and below] is last year's thread: a colleague's course,
+  DD1310, a programme code from its booking sheet, the colleague's name
+  in an attribution line.
+\end{description}
+All of the last item became labels---another course, and with a rules
+file (\cref{LabelRules}) a programme and a colleague---and none of it
+is what the email is about.
+Naming a course is deliberate, we said when we decided to read course
+codes from the whole email; but it is deliberate for the one who wrote
+it, in the message they wrote it in.
+
+So [[labels]] reads a thread only as far as the message answered.
+That one level we need.
+A reply is about what it replies to:
+our three lines carry no course and no employment word, the message
+above them carries both, and a reply to a student's question should be
+tracked like the question.
+It is also where the student's disclaimer stands when we reply to a
+student (\cref{StudentDisclaimer}).
+Beyond that level each step adds less of the matter at hand and more
+of where the thread came from.
+<<functions>>=
+recent() {
+  local file=$(file_or_stdin "$1")
+  awk -v max="${QUOTE_DEPTH}" '{
+    prefix = $0
+    sub(/[^> ].*$/, "", prefix)
+    if (gsub(/>/, "", prefix) <= max) print
+  }' "$file"
+}
+<<variables>>=
+QUOTE_DEPTH="${QUOTE_DEPTH:-1}"
+@ The prefix is whatever precedes the first character that is neither
+[[>]] nor a space, which covers both [[> >]] and [[>>]]; [[gsub]]
+returns the number of [[>]] it removed from it, and that is the depth.
+The headers are at depth zero, so the [[from:]] and [[subject:]] rules
+still find them.
+The depth can be set from the environment, like the rules file, to see
+what a different cut would do---we do that in \cref{LabelsTesting}.
+
+The cut is at one and not at two for a reason that \cref{email13} also
+shows.
+Mail clients re-wrap quoted text, and the tail of a wrapped line loses
+the markers it had:
+line 46 stands four messages down and counts as depth two.
+A deeper cut lets such fragments in, and that one names DD1310.
+The same weakness sets the limit of the method:
+a client that quotes by indentation, or puts the older messages under a
+\enquote{Original Message} header as in \cref{email8}, leaves the whole
+thread at depth zero, and we read all of it as before.
+
+As with the guessing, we rewrite [[file]] and leave the tests alone.
+<<narrow [[file]] to the message and the one it answers>>=
+local narrowed=$(mktemp)
+recent "$file" > "${narrowed}"
+file="${narrowed}"
+@ Only [[labels]] does this.
+The results subcommands look a student up, and for that the older
+messages help: the student's identifier and the assignment may well
+stand only in the first message of the thread.
+
 \subsection{User-defined label rules}\label{LabelRules}
 
 The course and assistant tests above change rarely, so hard-coding them
@@ -2009,7 +2090,7 @@ esac | grep -qiP "${pattern}" \
   && echo "${field}" ${rule_labels}
 @
 
-\subsection{Testing on the emails}
+\subsection{Testing on the emails}\label{LabelsTesting}
 
 Let's run [[labels]] on the example emails.
 (We point [[XDG_CONFIG_HOME]] at a nonexistent directory so the author's
@@ -2098,6 +2179,25 @@ print_verbatim("\n".join(lines))
 \end{pycode}
 What the rules add to the thread is shown with the seed rules in the
 [[nymutt]] documentation.
+
+The reminder about the hourly contract (\cref{email13}) is where the
+cut in the thread decides the answer, so we run it at several:
+the message alone, the default, one level too many, and the whole
+thread as we used to read it.
+\begin{pycode}
+lines = []
+for depth in ["0", "1", "2", "99"]:
+    output = subprocess.run(["./edumail", "labels", "email13.txt"],
+                            capture_output=True,
+                            env=dict(norules, QUOTE_DEPTH=depth))
+    lines.append(f"{depth:>2}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+The message alone is an assistant matter on its subject, and the
+message it answers adds the course.
+One level further the re-wrapped line brings in a course that the
+email is not about, and nothing at any depth adds what the default
+lacks.
 
 \Cref{email11} is what the guessing looked like before the sender
 decided its reach: it used to name four courses and three of their

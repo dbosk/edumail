@@ -305,7 +305,7 @@ stop_labels() {
 }
 @
 
-\subsection{Deriving labels}
+\subsection{Deriving labels}\label{Derive}
 
 Derivation is [[edumail]]'s job; the script adds only the base
 [[email]] label, so that every opened email is tracked even when
@@ -391,6 +391,28 @@ output = subprocess.run(["./nymutt", "derive", "email11.txt"],
                         capture_output=True, env=demoenv)
 print_verbatim(output.stdout)
 \end{pycode}
+The thirteenth is a reminder to the personnel office about an hourly
+contract, three lines on top of a long thread.
+[[edumail]] reads a thread only as far as the message answered, and the
+rules read what [[edumail]] hands them, so they see no more of it.
+To show what that spares us we run it twice, first as it is and then
+with the whole thread read, the way it used to be:
+\begin{pycode}
+lines = []
+for depth, name in [("1", "as far as the message answered"),
+                    ("99", "the whole thread")]:
+    output = subprocess.run(["./nymutt", "derive", "email13.txt"],
+                            capture_output=True,
+                            env=dict(demoenv, QUOTE_DEPTH=depth))
+    lines.append(f"{name}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+The desk in [[To:]] gives [[admin]] and [[hr]] either way.
+The whole thread adds a second course and a [[programme]], both from
+a colleague's message of a year before that was quoted along; with the
+colleague's real name in place of the pseudonym, the seed's rule for
+that name would have added [[colleague]] from the attribution line as
+well.
 
 \subsection{Opening an email}
 
@@ -1008,6 +1030,11 @@ We accept the latter:
 an email that talks about a colleague by full name is usually about that
 colleague's matter, and the names are long enough not to occur by
 accident.
+That holds for what the author wrote, not for the thread quoted
+below it, where a name stands in an attribution line for having once
+replied; [[edumail labels]] therefore hands the rules the thread only
+as far as the message answered (the thirteenth example of \cref{Derive}
+shows the difference).
 
 The personnel office is a role within a role:
 its people and its support desk are [[admin]] like the other desks, and
