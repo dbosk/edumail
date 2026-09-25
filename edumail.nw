@@ -443,10 +443,13 @@ There are some lines that we don't want to match anything on.
 For example, we don't want to match the email identifier in the [[In-Reply-To]] 
 header and not the year in the [[Date]] header.
 For this, we construct a filter which removes these lines.
+(One line of the body goes the same way, for a reason of its own that
+we give in \cref{StudentDisclaimer}.)
 <<functions>>=
 clean() {
   local file=$(file_or_stdin "$1")
-  grep -vE "^(${IGNORE_HEADERS})" "$file"
+  grep -vE "^(${IGNORE_HEADERS})" "$file" \
+  | <<drop the line the mail system wrote>>
 }
 <<variables>>=
 IGNORE_HEADERS="In-Reply-To:|References:|Message-ID:|Content-Type:"
@@ -490,6 +493,25 @@ since it is a recent addition and the mail may be old or forwarded.
 \Cref{email2,email3} are student emails without it.
 Everything below therefore uses [[is_student]] to license a guess, never
 to forbid one.
+
+Reading the line for who wrote the email is one half of treating it
+right; the other is not to read it for what it says.
+Its words are the mail system's, and one of them is
+\enquote{anställd}---an employment word, and the assistant test
+(\cref{LabelsSection}) looks for those.
+With the line left in, every student has written about employment, and
+the test's other half decides alone:
+a student who mentions the assistant who graded their lab has then
+sent us assistant mail.
+So [[clean]] drops the line, quoted or not, and every keyword test
+reads the email without it.
+<<drop the line the mail system wrote>>=
+grep -viE "${STUDENT_DISCLAIMER}"
+@ [[is_student]] is unaffected, since it reads the raw email.
+Only the line with the phrase goes.
+The rest of the disclaimer---who answers for the opinions in the
+message---matches nothing we look for, and a pattern wide enough to
+cover it would sooner or later cover something a student wrote.
 
 The line says something sharper than \enquote{a student}, which is
 worth recording even though nothing uses it yet:
@@ -1994,6 +2016,19 @@ The conjunction in the assistant test is what keeps a student's mention
 of their assistant from being taken for assistant matters:
 \begin{pycode}
 email = "Subject: Re: LAB2\n\nAssistenten sa att det var godkänt.\n"
+output = subprocess.run(["./edumail", "labels"], input=email.encode(),
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+That email is shorter than the ones students send, which end with the
+mail system's disclaimer (\cref{StudentDisclaimer}).
+Its \enquote{anställd} is an employment word, and it would complete the
+conjunction for any student who mentions an assistant, if [[clean]] did
+not drop the line.
+The same email as it actually arrives:
+\begin{pycode}
+email += ("\nObservera att avsändaren inte är anställd vid "
+          "Kungliga Tekniska högskolan.\n")
 output = subprocess.run(["./edumail", "labels"], input=email.encode(),
                         capture_output=True, env=norules)
 print_verbatim(output.stdout)
