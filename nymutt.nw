@@ -359,8 +359,9 @@ The last three examples are a thread about an assistant's contract:
 we ask the personnel office for it, the assistant replies, the office
 replies.
 [[edumail]] recognizes all three as assistant matters, and the seed
-rules add [[admin]] for the support desk on the two emails it is party
-to; the assistant's \enquote{rättat} in the second matches the rules'
+rules add [[admin]] and [[hr]] for the personnel office's support desk
+on the two emails it is party to; the assistant's \enquote{rättat} in
+the second matches the rules'
 examination line, but [[edumail]] discards that label for mail about
 the course as a whole.
 No course appears, because none is named: the thread is about a
@@ -1007,6 +1008,13 @@ We accept the latter:
 an email that talks about a colleague by full name is usually about that
 colleague's matter, and the names are long enough not to occur by
 accident.
+
+The personnel office is a role within a role:
+its people and its support desk are [[admin]] like the other desks, and
+[[hr]] besides, so that the time spent on contracts can be told from
+the time spent on rooms and schedules.
+The desk needs the label as much as the people do, since it is the desk
+we write to and the desk that answers.
 Where the scoring file had only a username, the name came from
 [[kthutils ug user <username>]], which is also how to extend the list.
 <<[[labels.rules]]>>=
@@ -1016,7 +1024,8 @@ schema@admin\.kth\.se                               schedule admin
 @timeedit\.com                                      schedule admin
 education-support@eecs\.kth\.se                     admin examination
 service@eecs\.kth\.se                               admin
-(student-support|hr-support)@eecs\.kth\.se          admin
+student-support@eecs\.kth\.se                       admin
+hr-support@eecs\.kth\.se                            admin hr
 pa-.*@.*\.kth\.se                                   admin
 Anna\sOlanås\sJansson                               admin hr
 Hanna\sHolmqvist                                    admin hr
