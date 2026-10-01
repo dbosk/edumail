@@ -1,0 +1,47 @@
+Date: Sat, 5 Sep 2026 17:26:01 +0200
+From: Studenten Studentensson <studenten@kth.se>
+To: Daniel Bosk <dbosk@kth.se>
+Subject: Datintro "Who finished datintro first?" Exercise 9
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Content-Type: text/plain; charset=utf-8
+
+Dear Daniel,
+
+I just got done making a bash script that I believe solves exercise 9 on in the
+"Who finished datintro first?" document. The script is attached as first.sh.
+The script takes one argument, the target file, and has 3 options available:
+
+ 1. -n INTEGER specifies the number of students you want to display (default
+    100)
+ 2. -d INTEGER specifies the difference in time, exclusive and measured in
+    seconds, between two students that is allowed for them to still get the
+    same placement (default 0)
+ 3. -f forces the program to display a number of students equal to
+    what specified in -n (or the default value), ignoring those who would tie
+    for the last place.
+
+
+There are some edge cases where the script wont work as intended. For example
+if one student is done at 11:59:50 and one at 00:00:10 the following day then
+the script won't give them the same placement even if you use "-d 30".
+Additionally, since the difference in time is evaluated between the previously
+viewed student and the current one, it is possible for a chain of students to
+build that gives them all the same rank, even though they are not within the
+specified number of seconds if you count from the first student in the chain.
+Still, from my limited testing, I believe it does the job quite well in most
+cases and I hope you will think so too.
+Kind regards,
+Studenten
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Observera att avsändaren inte är anställd vid Kungliga Tekniska högskolan. KTH
+ansvarar inte för åsikter, påståenden eller personuppgifter som förmedlas i
+detta meddelande.
+
+Please note that the sender is not employed by KTH Royal Institute of
+Technology. KTH is not responsible for the opinions, claims or personal data
+conveyed in this message.
+
+
+

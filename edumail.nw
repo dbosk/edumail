@@ -702,6 +702,31 @@ clean "$file" | grep -Po "${COURSE_CODE}" \
 clean "$file" | grep -Po "${COURSE_NICK}" | sed -E 's/[0-9]{2}$//'
 @
 
+A nick name may also come without its year.
+\begin{example}\label{email12}
+A student of datintro sends us their solution to an optional exercise.
+\inputminted[highlightlines={4,11,15,17,31}]{text}{email12.txt}
+The subject names the course, but without a year.
+\end{example}
+[[COURSE_NICK]] needs the year: it is any word followed by two digits,
+and without them it would be any word at all.
+So \cref{email12} named nothing, and we guessed over the whole email,
+since a student wrote it:
+\enquote{bash} and \enquote{script} gave the datintro family,
+\enquote{specifies} the programming one, and the email counted for four
+courses.
+For our own courses we don't need the year, since we know their nick
+names: we look for them as whole words.
+The word boundaries keep the nick names with a year out, as a digit is a
+word character; [[COURSE_NICK]] already finds those.
+A subject starts with a capital, as in \cref{email12}, so we match
+regardless of case and print the nick name as the table has it.
+<<courses named in [[file]]>>=
+clean "$file" | grep -Pio "\b(${KNOWN_NICKS})\b" | tr '[:upper:]' '[:lower:]'
+<<variables>>=
+KNOWN_NICKS=$(IFS='|'; echo "${!COURSE_CODES[*]}")
+@
+
 \Cref{email5} adds a second rule: among the named courses, the ones we 
 teach outrank the ones we don't.
 A student who names one of our courses together with others has told us 
