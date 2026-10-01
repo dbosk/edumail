@@ -13,6 +13,14 @@ edumail.tex: edumail.nw noweb_lexer.py
 nymutt.pdf: nymutt.tex didactic.sty
 nymutt.pdf: preamble.tex
 nymutt.pdf: nymutt edumail .muttrc.nytid labels.rules
+# PythonTeX names its output files without the jobname
+# (py_default_default_N.stdout, pythontex_data.pkl), so two documents that
+# share an output directory typeset each other's output.  A PythonTeX
+# output directory of its own won't do, since latexmk only reruns PythonTeX
+# for a .pytxmcr next to the .pytxcode; so nymutt gets a TeX output
+# directory of its own.  It is next to ltxobj, so that PythonTeX's working
+# directory, .. in preamble.tex, is still this directory.
+nymutt.pdf: TEX_OUTDIR=ltxobj-nymutt
 
 nymutt.tex: nymutt.nw noweb_lexer.py
 
