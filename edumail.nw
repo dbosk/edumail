@@ -886,7 +886,7 @@ are in English---although Swedish students sometimes write their emails in
 Swedish if they have figured out that I'm fluent in Swedish.
 <<test for programming terms>>=
    <<look for>> "programm?ering|python|DD1310|DD1317" \
-|| <<look for>> "datorprov|projekt|p-uppgift|gransk|\bspec" \
+|| <<look for>> "datorprov|projekt|p-uppgift|gransk|${PROJECT_SPEC}" \
 || <<look for>> "lab(b|oration) [1-6]|Excel" \
 || <<look for>> "restlab"
 <<test for datintro terms>>=
@@ -901,6 +901,20 @@ Swedish if they have figured out that I'm fluent in Swedish.
 || <<look for>> "INL1 ?(Written|Oral)"
 <<test for science terms>>=
 <<look for>> "DA2215|TAMOS|scien|project|seminar|formal|report"
+@
+
+The \enquote{spec} of the programming course is the specification of the
+project, which students call \enquote{specen} or write out as
+\enquote{specifikation}.
+The bare stem also begins ordinary English words: the student of
+\cref{email12} \enquote{specifies} two options and a \enquote{specified}
+number of seconds.
+So we let the stem end only in those two ways.
+The ending is in a lookahead, so that a match is still just
+\enquote{spec}; that matters when we extract it as the name of an
+assignment ([[ASSIGNMENT]], \cref{AssignmentsSection}).
+<<variables>>=
+PROJECT_SPEC="\bspec(?=(en|ifi[ck]ation)?\b)"
 @
 
 We want the [[grep]] to be quiet and case insensitive.
@@ -1081,7 +1095,7 @@ LAB1 for the programming course is a series of labs.
 <<look for>> "datorprov|(kontroll|kort)skrivning|prov|tenta"
 @ LAB3 is the project assignment.
 <<test for programming LAB3 terms>>=
-<<look for>> "projekt|p-uppgift|gransk|\bspec"
+<<look for>> "projekt|p-uppgift|gransk|${PROJECT_SPEC}"
 @ KAL1 is the Excel part, consists of four labs in Excel.
 <<test for programming KAL1 terms>>=
 <<look for>> "Excel"
@@ -1138,7 +1152,7 @@ output = subprocess.run(["./edumail", "assignment_groups", "email2.txt"],
 print_verbatim(output.stdout)
 \end{pycode}
 
-\subsection{Assignments}
+\subsection{Assignments}\label{AssignmentsSection}
 
 For individual assignments we need a list of names to look for.
 We can look at \cref{email3} again, since it has both an assignment and an 
@@ -1163,7 +1177,8 @@ assignments() {
 
 The known assignments names are as follows.
 <<variables>>=
-ASSIGNMENT="granskn|lab(b|oration) ?[0-9]+|spec|p-uppgift|projekt|datorprov"
+ASSIGNMENT="granskn|lab(b|oration) ?[0-9]+|${PROJECT_SPEC}|p-uppgift|projekt"
+ASSIGNMENT="${ASSIGNMENT}|datorprov"
 @
 
 Let's test this on the emails from the examples above.
@@ -2241,6 +2256,16 @@ The first two of those hits were bad matching rather than bad reach:
 inside \enquote{especially}, so both keywords now require a word
 boundary in front.
 That matters for the emails we still read in full, the students'.
+For \enquote{spec} the front was not enough, \cref{email12} showed, and
+the stem may now only end as the project's specification
+([[PROJECT_SPEC]]).
+With that, and with its nick name read as a name
+(\cref{CourseCandidates}), \cref{email12} is about datintro:
+\begin{pycode}
+output = subprocess.run(["./edumail", "labels", "email12.txt"],
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
 
 \Cref{email9} shows the guesses at work on a program's output, and what
 a [[stream:]] rule does about them.
