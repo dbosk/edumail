@@ -1,0 +1,80 @@
+From: Daniel Bosk <dbosk@kth.se>
+To: Teknologen Teknologsson <teknologen@kth.se>
+Cc:
+Bcc:
+Subject: Re: preliminär tidrapport (datintro|prg[im]|tilkry)
+Message-ID: <asaLnDEkMpmBlApN@X1>
+Reply-To:
+In-Reply-To: <e65cbfcdaf8346b0abd6f94b68f269b6@kth.se>
+
+Lugnt, ska nog lösa sig ändå!
+
+        Daniel
+
+
+On ons 30 sep 2026 14:35:14, Teknologen Teknologsson wrote:
+> Hej, Jag har rapporterat in mina timmar nu! Men jag lyckades inte lägga in
+> Konotering dvs JHT 110210 på alla pass, knapparna fungerade inte:/
+> Teknologen Teknologsson
+>
+> ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+> From: Daniel Bosk <dbosk@kth.se>
+> Sent: 25 September 2026 07:05:10
+> To: Teknologen Teknologsson
+> Subject: preliminär tidrapport (datintro|prg[im]|tilkry)
+>
+>
+> Hej, hej!
+>
+> Du har 37.50 timmar i bokningsarket för (datintro|prg[im]|tilkry).
+>
+>
+> Du kan rapportera in timmarna nedan i KTH HR. Guider finns här:
+>
+>   https://www.kth.se/social/group/tcs-teaching/page/assistenter/
+>
+> Gör det innan 2026-10-01 för att få betalt 2026-10-25. Tiderna finns
+> även bifogat som CSV-fil.
+>
+> Svara på detta mail när du har rapporterat in timmarna i KTH HR
+> (Medvind)!
+>
+> Om något är fel, korrigera i bokningsarket och svara på detta
+> mail!
+>
+>           Daniel
+>
+>
+> teknologen
+> Datum   Kurskod Tid     Moment  Klocktimmar     Schablon        Lönetimmar
+> Lön
+> 2026-08-25      08:00:00                Datorlaboration, datintro-ctfys 2.0
+> 1.8     3.75    618.75
+> 2026-08-25      15:00:00                Datorlaboration, datintro-cinek
+> datintro-ctfys  2.0     1.8     3.75    618.75
+> 2026-08-26      10:00:00                Datorlaboration, datintro-cfate
+> datintro-ctmat  2.0     1.8     3.75    618.75
+> 2026-08-28      08:00:00                Datorlaboration, datintro-cdate
+> datintro-ctmat datintro-cfate   2.0     1.8     3.75    618.75
+> 2026-09-03      10:00:00                Datorlaboration, datintro-ctfys 2.0
+> 1.8     3.75    618.75
+> 2026-09-03      15:00:00                Datorlaboration, datintro-ctfys 2.0
+> 1.8     3.75    618.75
+> 2026-09-04      08:00:00                Datorlaboration, datintro-ctmat
+> datintro-cfate  2.0     1.8     3.75    618.75
+> 2026-09-04      10:00:00                Datorlaboration, datintro-cfate
+> datintro-ctmat  2.0     1.8     3.75    618.75
+> 2026-09-08      13:00:00                Datorlaboration, datintro-ctfys 2.0
+> 1.8     3.75    618.75
+> 2026-09-08      15:00:00                Datorlaboration, datintro-cdate
+> datintro-ctmat datintro-cfate   2.0     1.8     3.75    618.75
+> ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+>
+> Observera att avsändaren inte är anställd vid Kungliga Tekniska högskolan. KTH
+> ansvarar inte för åsikter, påståenden eller personuppgifter som förmedlas i
+> detta meddelande.
+>
+> Please note that the sender is not employed by KTH Royal Institute of
+> Technology. KTH is not responsible for the opinions, claims or personal data
+> conveyed in this message.
+>
