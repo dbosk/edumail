@@ -1654,6 +1654,347 @@ print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
 
 
+\section{The HR subcommands}\label{HRSection}
+
+Students are not the only ones who write to us about records.
+Our teaching assistants are paid for the hours they have booked
+themselves for in the sign-up sheets, and we keep those sheets with
+[[nytid]].
+Once a month [[nytid]] mails each assistant a draft time sheet: the
+hours booked so far, which they report to KTH's HR system and then
+confirm by answering the email.
+Assistants on a contract instead (amanuenses) need the contract made,
+and every assistant must be reported to HR as employed.
+Each of these is one [[nytid hr]] command, and each wants to know which
+assistant and which course rounds the email is about.
+
+\begin{example}\label{email15}
+An assistant confirms that they have reported their hours.
+\inputminted[highlightlines={2,5,69}]{text}{email15.txt}
+We want to generate their time sheet---for this assistant, for the
+course rounds of the draft, up to the last session in it.
+\end{example}
+
+This is the same task as the results subcommands', so we solve it the
+same way:
+we print command lines into the reply, with the identifiers as
+variables on top, to correct by hand where the email misled us.
+\Cref{email15} should yield the following.
+\begin{pycode}
+output = subprocess.run(["./edumail", "hr", "email15.txt"],
+                        capture_output=True)
+print_verbatim(str(output.stdout, "utf-8"))
+\end{pycode}
+(The course rounds, the period and the validity depend on the day this
+document is compiled and on the author's [[nytid]] registers; we will
+see why below.)
+Before this script, those lines were typed by hand, with the
+assistant's username adapted each time---and that username is right
+there in the address the email came from.
+
+We print all the commands rather than guess which one the email asks
+for.
+The email in \cref{email15} could as well have been a question about
+the contract, and a command we don't need is one line to skip, while
+one we need but didn't get must be typed out after all.
+<<functions>>=
+hr() {
+  local file=$(file_or_stdin "$1")
+  shift
+  timesheets "$file" "$@"
+  echo "echo"
+  amanuensis "$file" "$@"
+  echo "echo"
+  employed "$file" "$@"
+}
+@
+
+\subsection{The commands}
+
+Each command gets a subcommand of its own, so that we can ask for just
+one of them.
+As with the results subcommands, whichever of them runs first prints
+the variables.
+<<functions>>=
+timesheets() {
+  <<output HR variables if not already done>>
+  <<construct [[timesheets]] commands from email>>
+}
+amanuensis() {
+  <<output HR variables if not already done>>
+  <<construct [[amanuensis]] command from email>>
+}
+employed() {
+  <<output HR variables if not already done>>
+  <<construct [[employed]] command from email>>
+}
+@
+
+The flag is not the one of [[<<output variables if not already done>>]]:
+the HR variables are other variables, and if we call [[results]] and
+[[hr]] in the same shell, each must still print its own.
+<<output HR variables if not already done>>=
+local file=$(file_or_stdin "$1")
+if [[ -z "$HR_VARS_ALREADY_OUTPUT" ]]; then
+  HR_VARS_ALREADY_OUTPUT=1
+  <<echo the HR variables>>
+fi
+@
+
+The time sheets come in two kinds, and [[nytid]] makes them in separate
+runs:
+with [[--no-amanuensis]], its default, it makes them for the hourly
+paid assistants only, with [[--amanuensis]] for the amanuenses only,
+whose hours beyond the contract are paid as \enquote{mertid}.
+An assistant is one or the other, so one of the two commands yields
+nothing; we spell out the default, so that the two lines show their
+difference.
+<<construct [[timesheets]] commands from email>>=
+local kind
+for kind in --no-amanuensis --amanuensis; do
+  [[ "${kind}" = --amanuensis ]] && echo "echo"
+  echo 'nytid hr timesheets generate "${COURSE}" \'
+  echo '  --user "${TA}" --end "${END}" \'
+  echo "  ${kind} \\"
+  echo '  --no-store'
+done
+@ The [[--no-store]] makes it a preview, which is what we want to
+compare with what the assistant reported.
+
+The contract is made for a period, and the employment report is valid
+until a date.
+<<construct [[amanuensis]] command from email>>=
+echo 'nytid hr amanuensis create --xlsx --xlsx-format TCS "${COURSE}" \'
+echo '  --user "${TA}" \'
+echo '  --period "${PERIOD}"'
+<<construct [[employed]] command from email>>=
+echo 'nytid hr employed report "${COURSE}" "${TA}" \'
+echo '  --valid-until "${VALID_UNTIL}"'
+@
+
+What remains is to find the values of the variables:
+the assistant ([[TA]]), the course rounds ([[COURSE]]), the last date
+reported ([[END]]), the period ([[PERIOD]]) and the validity
+([[VALID_UNTIL]]).
+
+\subsection{The assistant's username}
+
+[[nytid]] knows the assistants by their KTH usernames, and the username
+is the part before the @ of their KTH address.
+When we reply, the assistant's address is in the [[To:]] line, as the
+student's is for [[student_id]].
+But the email we look at is not always our reply:
+it may be the assistant's email as it arrived, and then they are in the
+[[From:]] line and we are in the [[To:]] line.
+So we take the first KTH address of those two lines that isn't our own.
+Only the header lines count:
+the quoted thread in \cref{email15} has [[From:]] and [[To:]] lines too,
+but quoting puts a [[>]] in front of them.
+<<functions>>=
+ta_username() {
+  local file=$(file_or_stdin "$1")
+  local user
+  for user in $(grep -E "^(To|From): " "$file" \
+                | grep -Po "${KTH_USERNAME}"); do
+    if [[ "${user}" != "${OUR_USERNAME}" ]]; then
+      echo "${user}"
+      return 0
+    fi
+  done
+  return 1
+}
+<<echo the HR variables>>=
+echo "TA=\"$(ta_username $file)\""
+@ If there is no such address, the variable is printed empty, which is
+easy to spot and fill in.
+
+The username is [[USER_FORMAT]] in front of a KTH [[DOMAIN]], but it
+must not be the tail of a longer local part.
+The functional addresses have hyphens---[[hr-support@eecs.kth.se]] is
+in the [[To:]] line of \cref{email13}---and without the lookbehind we
+would take \enquote{support} for an assistant.
+<<variables>>=
+KTH_USERNAME="(?<![-.\w])${USER_FORMAT}(?=@${DOMAIN})"
+@
+
+Our own username we take to be our login name, as it is on the
+author's machines; where it isn't, setting [[OUR_USERNAME]] in the
+environment overrides it.
+<<variables>>=
+OUR_USERNAME="${OUR_USERNAME:-${USER}}"
+@
+
+\subsection{The course rounds}
+
+The draft time sheet tells us which courses it was made for.
+[[nytid]] writes the course regex it was given into the subject,
+\enquote{preliminär tidrapport (datintro|prg[im]|tilkry)} in
+\cref{email15}, and the assistant's answer keeps it.
+But that regex is not what we typed by hand for this email:
+it was [[(datintro|prgi)26]].
+The regex has no year, so it matches the rounds of every year, and it
+names courses that aren't running now---no prgm this year, and tilkry
+not until the next period.
+What we added by hand is our knowledge of which rounds we are giving
+now.
+
+[[nytid]] has that knowledge too.
+Our own register lists only the rounds we are giving now:
+\begin{pycode}
+output = subprocess.run(["nytid", "courses", "ls"], capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+Those of them that the subject's regex matches are exactly the rounds we
+meant, datintro26 and prgi26.
+We output them as a disjunction, [[(datintro26|prgi26)]], which matches
+the same courses as [[(datintro|prgi)26]].
+This register is also the one the commands use, as none of them names
+another, so the rounds we find are rounds the commands know.
+<<functions>>=
+hr_courses() {
+  local file=$(file_or_stdin "$1")
+  local regex=$(draft_course_regex "$file")
+  [[ -n "${regex}" ]] || regex=$(course_candidates_regex "$file")
+  [[ -n "${regex}" ]] || return 1
+  local current=$(nytid courses ls 2>/dev/null | cut -f 2 \
+                  | grep -E "${regex}" | sort)
+  if [[ -n "${current}" ]]; then
+    make_disjunct_regex <<< "${current}"
+  else
+    echo "${regex}${YEAR}"
+  fi
+}
+<<echo the HR variables>>=
+echo "COURSE=\"$(hr_courses $file)\""
+@ When none of our current rounds match, we still have the courses, so
+we guess the round of this year:
+a draft for a round that is over is unlikely to be answered a year
+later.
+Piped, [[nytid courses ls]] prints one [[register<tab>course]] line per
+course, hence the [[cut]]; the [[sort]] makes the output independent of
+the order the register keeps.
+
+The regex is the subject's if [[nytid]] wrote the subject.
+<<functions>>=
+draft_course_regex() {
+  local file=$(file_or_stdin "$1")
+  grep -m 1 "^Subject: " "$file" | grep -Po "${DRAFT_SUBJECT}\K\S+"
+}
+<<variables>>=
+DRAFT_SUBJECT="preliminär tidrapport "
+@ Otherwise---say the assistant asks about their contract---we make a
+regex of the courses the email names or suggests, the candidates of
+\cref{CourseCandidates}.
+The guard matters:
+[[make_disjunct_regex]] makes [[()]] of no courses, and that would
+match every course we have.
+<<functions>>=
+course_candidates_regex() {
+  local file=$(file_or_stdin "$1")
+  local nicks=$(course_candidates "$file")
+  [[ -n "${nicks}" ]] && make_disjunct_regex <<< "${nicks}"
+}
+@
+
+\subsection{The last date reported}
+
+The time sheet must end where the draft ended.
+Sessions after it are in the sign-up sheet already, but the assistant
+hasn't been asked to report them.
+They will be in next month's draft; if they were also in this month's
+time sheet, they would be reported as paid already, and the assistant
+would never be asked to report them.
+So [[END]] is the date of the last session in the draft.
+
+The draft's table has a row per session, which starts with its date and
+time; quoting and the mail client's line wrapping put [[>]] in front and
+break the rows, but never before the time.
+The time is what tells a row from any other line starting with a date.
+Within the table the rows are in order, but we sort anyway, which costs
+nothing and doesn't depend on [[nytid]]'s order.
+<<functions>>=
+reported_until() {
+  local file=$(file_or_stdin "$1")
+  local last=$(grep -Po "${BOOKING_ROW_DATE}" "$file" | sort | tail -n 1)
+  echo "${last:-$(date +%F)}"
+}
+<<variables>>=
+BOOKING_ROW_DATE="^[>\s]*\K\d{4}-\d{2}-\d{2}(?=\s+\d{2}:\d{2}:\d{2})"
+<<echo the HR variables>>=
+echo "END=\"$(reported_until $file)\""
+@ An email without a draft gets today's date, so that a time sheet made
+from it contains only sessions that have taken place.
+The deadline in the draft's text, \enquote{innan 2026-10-01}, is a date
+too, but not at the start of a line nor followed by a time.
+
+\subsection{The period and the validity}
+
+The contract is made per period, and the periods are configured in
+[[nytid]] with their dates:
+\begin{pycode}
+output = subprocess.run(["nytid", "hr", "periods", "list"],
+                        capture_output=True)
+print_verbatim(output.stdout)
+\end{pycode}
+We take the period we are in.
+A request for a contract usually comes for the period we are in, or
+just before the next one starts; in the latter case the variable is
+the one to change.
+ISO dates compare correctly as strings, so [[awk]] can do it.
+<<functions>>=
+current_period() {
+  nytid hr periods list 2>/dev/null \
+  | awk -v today="$(date +%F)" '$2 <= today && today <= $3 { print $1; exit }'
+}
+<<echo the HR variables>>=
+echo "PERIOD=\"$(current_period)\""
+@
+
+An employment report holds until HR's records are reset, on the first
+of July, and [[nytid]] wants the next such date.
+It can compute it itself from the config key
+[[hr.employment.reset_date]], but we print it rather than rely on that
+key being set, since the line should work on any of our machines.
+<<functions>>=
+valid_until() {
+  local year=$(date +%Y)
+  if [[ "$(date +%m-%d)" < "${HR_RESET_DATE}" ]]; then
+    echo "${year}-${HR_RESET_DATE}"
+  else
+    echo "$((year + 1))-${HR_RESET_DATE}"
+  fi
+}
+<<variables>>=
+HR_RESET_DATE="07-01"
+<<echo the HR variables>>=
+echo "VALID_UNTIL=\"$(valid_until)\""
+@
+
+\subsection{Testing on the emails}
+
+The parts of \cref{email15} on their own:
+the username, from the [[To:]] line; the course rounds, from the subject
+and our register; and the last session, from the table.
+\begin{pycode}
+lines = []
+for function in ["ta_username", "hr_courses", "reported_until"]:
+    output = subprocess.run(["./edumail", function, "email15.txt"],
+                            capture_output=True)
+    lines.append(f"{function}: {output.stdout.decode().strip()}")
+print_verbatim("\n".join(lines))
+\end{pycode}
+The contract thread's reminder (\cref{email13}) is an email we wrote
+ourselves, to an assistant and to HR's functional address, and it has
+no draft:
+the assistant is the first address that is not ours, the course rounds
+come from the course the thread names, and the end is today.
+\begin{pycode}
+output = subprocess.run(["./edumail", "hr", "email13.txt"],
+                        capture_output=True)
+print_verbatim(str(output.stdout, "utf-8"))
+\end{pycode}
+
+
 \section{Extracting time-tracking labels}\label{LabelsSection}
 
 The same parsing that finds a course for the results subcommands can also
