@@ -1673,9 +1673,9 @@ assistant and which course rounds the email is about.
 \begin{example}\label{email15}
 An assistant confirms that they have reported their hours.
 \inputminted[highlightlines={2,5,69}]{text}{email15.txt}
-We want to check what they reported and generate their time sheet---for
-this assistant, for the course rounds of the draft, up to the last
-session in it.
+We want to check what they reported and generate their time sheet, for
+this assistant and the course rounds of the draft, with the time sheet
+ending at the last session in it.
 \end{example}
 
 This is the same task as the results subcommands', so we solve it the
@@ -1791,14 +1791,24 @@ So we compare the times reported to any leader, blank ones included.
 That also counts what the assistant reported to someone else, so the
 option has a line of its own, which is easy to delete when that matters.
 
-We leave the last date to [[nytid]] as well.
+We don't print the first date:
+it is a setting of ours, [[hr.medvind.since]] in the config of [[nytid]].
+We leave the last date to [[nytid]] too.
 Assistants can report some hours, such as preparation, a few days after
 the session, so the last session in the bookings needn't be the last date
 reported in Medvind, and stopping there would miss those hours.
 The default of [[nytid]] runs to the end of a month, picked by the cutoff
-day, so it counts them.
-[[--to]] stays as a comment for when we do want to stop at the draft's
-last session, and removing the comment sign is all it takes.
+day, so it counts them when they fall in the same month.
+Hours reported across a month's end show as a deviation until a later
+month's check includes them.
+
+That month is the draft's only up to the cutoff day of the next month.
+A later check, or one from an email without a draft, also counts bookings
+the assistant hasn't been asked to report, so a shortfall there needn't
+be an error.
+That is when we want to stop at the draft's last session:
+[[--to]] stays as a comment for it, and removing the comment sign is all
+it takes.
 It must be the last line:
 a comment ends the command, so any options below it would be lost.
 
@@ -1814,8 +1824,8 @@ echo '  --valid-until "${VALID_UNTIL}"'
 @
 
 What remains is to find the values of the variables:
-the assistant ([[TA]]), the course rounds ([[COURSE]]), the last date
-reported ([[END]]), the period ([[PERIOD]]) and the validity
+the assistant ([[TA]]), the course rounds ([[COURSE]]), the draft's last
+session ([[END]]), the period ([[PERIOD]]) and the validity
 ([[VALID_UNTIL]]).
 
 \subsection{The assistant's username}
@@ -1937,7 +1947,7 @@ course_candidates_regex() {
 }
 @
 
-\subsection{The last date reported}
+\subsection{The draft's last session}
 
 The time sheet must end where the draft ended.
 Sessions after it are in the sign-up sheet already, but the assistant
