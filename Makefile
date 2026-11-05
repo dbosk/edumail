@@ -8,7 +8,7 @@ edumail.pdf: edumail.tex didactic.sty
 edumail.pdf: abstract.tex preamble.tex
 edumail.pdf: edumail
 
-edumail.tex: edumail.nw noweb_lexer.py
+edumail.tex: edumail.nw
 
 nymutt.pdf: nymutt.tex didactic.sty
 nymutt.pdf: preamble.tex
@@ -22,7 +22,7 @@ nymutt.pdf: nymutt edumail .muttrc.nytid labels.rules
 # directory, .. in preamble.tex, is still this directory.
 nymutt.pdf: TEX_OUTDIR=ltxobj-nymutt
 
-nymutt.tex: nymutt.nw noweb_lexer.py
+nymutt.tex: nymutt.nw
 
 
 .PHONY:
