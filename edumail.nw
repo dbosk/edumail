@@ -1673,9 +1673,9 @@ assistant and which course rounds the email is about.
 \begin{example}\label{email15}
 An assistant confirms that they have reported their hours.
 \inputminted[highlightlines={2,5,69}]{text}{email15.txt}
-We want to check what they reported and generate their time sheet---for
-this assistant, for the course rounds of the draft, up to the last
-session in it.
+We want to check what they reported and generate their time sheet, for
+this assistant and the course rounds of the draft, with the time sheet
+ending at the last session in it.
 \end{example}
 
 This is the same task as the results subcommands', so we solve it the
@@ -1781,16 +1781,36 @@ Unlike the time sheets, this takes one run for both kinds of assistants:
 leaves an amanuensis with the mertid only.
 <<construct [[medvind]] command from email>>=
 echo 'nytid hr medvind deviations "${COURSE}" \'
-echo '  --user "${TA}" --to "${END}"'
-@ Without [[--to]], [[nytid]] would sum up to the end of a calendar
-month.
-That includes the sessions after the draft, which the assistant hasn't
-been asked to report, so each of them would look like hours missing from
-the report.
-We don't print the other options:
-the first date and the work leader are settings of ours rather than
-facts of the email, and [[nytid]] has them in its config as
-[[hr.medvind.since]] and [[hr.medvind.leader]].
+echo '  --user "${TA}" \'
+echo '  --leader ".*" \'
+echo '  #--to "${END}"'
+@ Many assistants don't fill in the work leader when they report.
+With the leader from our config, [[hr.medvind.leader]], those hours
+would be left out and look like hours missing from the report.
+So we compare the times reported to any leader, blank ones included.
+That also counts what the assistant reported to someone else, so the
+option has a line of its own, which is easy to delete when that matters.
+
+We don't print the first date:
+it is a setting of ours, [[hr.medvind.since]] in the config of [[nytid]].
+We leave the last date to [[nytid]] too.
+Assistants can report some hours, such as preparation, a few days after
+the session, so the last session in the bookings needn't be the last date
+reported in Medvind, and stopping there would miss those hours.
+The default of [[nytid]] runs to the end of a month, picked by the cutoff
+day, so it counts them when they fall in the same month.
+Hours reported across a month's end show as a deviation until a later
+month's check includes them.
+
+That month is the draft's only up to the cutoff day of the next month.
+A later check, or one from an email without a draft, also counts bookings
+the assistant hasn't been asked to report, so a shortfall there needn't
+be an error.
+That is when we want to stop at the draft's last session:
+[[--to]] stays as a comment for it, and removing the comment sign is all
+it takes.
+It must be the last line:
+a comment ends the command, so any options below it would be lost.
 
 The contract is made for a period, and the employment report is valid
 until a date.
@@ -1804,8 +1824,8 @@ echo '  --valid-until "${VALID_UNTIL}"'
 @
 
 What remains is to find the values of the variables:
-the assistant ([[TA]]), the course rounds ([[COURSE]]), the last date
-reported ([[END]]), the period ([[PERIOD]]) and the validity
+the assistant ([[TA]]), the course rounds ([[COURSE]]), the draft's last
+session ([[END]]), the period ([[PERIOD]]) and the validity
 ([[VALID_UNTIL]]).
 
 \subsection{The assistant's username}
@@ -1927,7 +1947,7 @@ course_candidates_regex() {
 }
 @
 
-\subsection{The last date reported}
+\subsection{The draft's last session}
 
 The time sheet must end where the draft ended.
 Sessions after it are in the sign-up sheet already, but the assistant
@@ -1935,8 +1955,7 @@ hasn't been asked to report them.
 They will be in next month's draft; if they were also in this month's
 time sheet, they would be reported as paid already, and the assistant
 would never be asked to report them.
-So [[END]] is the date of the last session in the draft, which is also
-where the check of the report must end.
+So [[END]] is the date of the last session in the draft.
 
 The draft's table has a row per session, which starts with its date and
 time; quoting and the mail client's line wrapping put [[>]] in front and
@@ -1956,8 +1975,6 @@ BOOKING_ROW_DATE="^[>\s]*\K\d{4}-\d{2}-\d{2}(?=\s+\d{2}:\d{2}:\d{2})"
 echo "END=\"$(reported_until $file)\""
 @ An email without a draft gets today's date, so that a time sheet made
 from it contains only sessions that have taken place.
-The check then also counts sessions the assistant hasn't been asked to
-report yet, so a deviation from such an email needn't be an error.
 The deadline in the draft's text, \enquote{innan 2026-10-01}, is a date
 too, but not at the start of a line nor followed by a time.
 
