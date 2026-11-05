@@ -1661,8 +1661,10 @@ Our teaching assistants are paid for the hours they have booked
 themselves for in the sign-up sheets, and we keep those sheets with
 [[nytid]].
 Once a month [[nytid]] mails each assistant a draft time sheet: the
-hours booked so far, which they report to KTH's HR system and then
-confirm by answering the email.
+hours booked so far, which they report to KTH's HR system, Medvind, and
+then confirm by answering the email.
+We check what they reported against the bookings and generate the time
+sheet.
 Assistants on a contract instead (amanuenses) need the contract made,
 and every assistant must be reported to HR as employed.
 Each of these is one [[nytid hr]] command, and each wants to know which
@@ -1671,8 +1673,9 @@ assistant and which course rounds the email is about.
 \begin{example}\label{email15}
 An assistant confirms that they have reported their hours.
 \inputminted[highlightlines={2,5,69}]{text}{email15.txt}
-We want to generate their time sheet---for this assistant, for the
-course rounds of the draft, up to the last session in it.
+We want to check what they reported and generate their time sheet---for
+this assistant, for the course rounds of the draft, up to the last
+session in it.
 \end{example}
 
 This is the same task as the results subcommands', so we solve it the
@@ -1697,10 +1700,15 @@ for.
 The email in \cref{email15} could as well have been a question about
 the contract, and a command we don't need is one line to skip, while
 one we need but didn't get must be typed out after all.
+The check of the report comes first, since it answers what such an email
+raises: did they report the hours they should?
+The time sheets are the detail to read when they didn't.
 <<functions>>=
 hr() {
   local file=$(file_or_stdin "$1")
   shift
+  medvind "$file" "$@"
+  echo "echo"
   timesheets "$file" "$@"
   echo "echo"
   amanuensis "$file" "$@"
@@ -1716,6 +1724,10 @@ one of them.
 As with the results subcommands, whichever of them runs first prints
 the variables.
 <<functions>>=
+medvind() {
+  <<output HR variables if not already done>>
+  <<construct [[medvind]] command from email>>
+}
 timesheets() {
   <<output HR variables if not already done>>
   <<construct [[timesheets]] commands from email>>
@@ -1758,8 +1770,27 @@ for kind in --no-amanuensis --amanuensis; do
   echo "  ${kind} \\"
   echo '  --no-store'
 done
-@ The [[--no-store]] makes it a preview, which is what we want to
-compare with what the assistant reported.
+@ The [[--no-store]] makes it a preview, so nothing counts as paid until
+we have looked at it.
+
+The comparison with what the assistant reported we leave to [[nytid]],
+which reads the reported hours from Medvind and prints nothing when they
+match the bookings.
+Unlike the time sheets, this takes one run for both kinds of assistants:
+[[nytid]] subtracts what a contract covers from the bookings, which
+leaves an amanuensis with the mertid only.
+<<construct [[medvind]] command from email>>=
+echo 'nytid hr medvind deviations "${COURSE}" \'
+echo '  --user "${TA}" --to "${END}"'
+@ Without [[--to]], [[nytid]] would sum up to the end of a calendar
+month.
+That includes the sessions after the draft, which the assistant hasn't
+been asked to report, so each of them would look like hours missing from
+the report.
+We don't print the other options:
+the first date and the work leader are settings of ours rather than
+facts of the email, and [[nytid]] has them in its config as
+[[hr.medvind.since]] and [[hr.medvind.leader]].
 
 The contract is made for a period, and the employment report is valid
 until a date.
@@ -1904,7 +1935,8 @@ hasn't been asked to report them.
 They will be in next month's draft; if they were also in this month's
 time sheet, they would be reported as paid already, and the assistant
 would never be asked to report them.
-So [[END]] is the date of the last session in the draft.
+So [[END]] is the date of the last session in the draft, which is also
+where the check of the report must end.
 
 The draft's table has a row per session, which starts with its date and
 time; quoting and the mail client's line wrapping put [[>]] in front and
@@ -1924,6 +1956,8 @@ BOOKING_ROW_DATE="^[>\s]*\K\d{4}-\d{2}-\d{2}(?=\s+\d{2}:\d{2}:\d{2})"
 echo "END=\"$(reported_until $file)\""
 @ An email without a draft gets today's date, so that a time sheet made
 from it contains only sessions that have taken place.
+The check then also counts sessions the assistant hasn't been asked to
+report yet, so a deviation from such an email needn't be an error.
 The deadline in the draft's text, \enquote{innan 2026-10-01}, is a date
 too, but not at the start of a line nor followed by a time.
 
