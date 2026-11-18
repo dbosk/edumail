@@ -1119,10 +1119,12 @@ when the sums for [[TA-management]] need splitting by course.
 
 \subsection{Courses}
 
-[[edumail labels]] emits every course code that appears literally in an
-email, so a rule keyed on a code alone would be redundant.
-The course rules below exist for the nicknames and module names students
-use instead of codes ([[inda]], [[tilda]], [[exjobb]]), and they emit
+[[edumail labels]] emits only the courses in its own table, by their
+nicknames, whether the email names them by code, by nickname or only
+by describing them.
+Any other course gets a label only from a rule, so the rules below key
+on its code as well as on the nicknames and module names students use
+instead of codes ([[inda]], [[tilda]], [[exjobb]]), and they emit
 the same year-free nicknames as [[edumail]]'s built-in tests, so time on
 a course accumulates under one label however the student refers to it.
 Students rarely write a telling subject line, so these rules are not
