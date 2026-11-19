@@ -449,6 +449,8 @@ we give in \cref{StudentDisclaimer}.)
 clean() {
   local file=$(file_or_stdin "$1")
   grep -vE "^(${IGNORE_HEADERS})" "$file" \
+  | <<drop armoured blocks>> \
+  | <<drop lines of attachments>> \
   | <<drop the line the mail system wrote>>
 }
 <<variables>>=
@@ -461,6 +463,68 @@ We also don't want to match the reply line.
 <<variables>>=
 IGNORE_HEADERS="${IGNORE_HEADERS}|On .* wrote:$"
 @
+
+Some lines are not text at all.
+We sign our mail, and a signature is a block of base64 that
+[[mutt]] passes on with the rest of the message.
+\begin{example}\label{email17}
+We answer a colleague about the output of the cron job that reports
+resubmitted labs, and sign the answer.
+\inputminted[highlightlines={4,5,19-20,25-40}]{text}{email17.txt}
+The only things the email names are the assignment group, LAB3, and
+the course round in the job's output, ht25.
+\end{example}
+Base64 is random letters and digits, so every pattern below finds
+something in it: LAB9, ABC12 and RZBD7 look like assignment groups to
+a pattern that reads capitals followed by digits, XHK1234 like a course
+code, and Kprgi24 and ab12 like course nick names.
+Before we dropped the block, \cref{email17} gave ten time-tracking
+labels (\cref{LabelsSection}), nine of them from the signature.
+
+The armour lines tell where the block begins, and its contents tell
+where it ends: base64, blank lines and the few header lines that
+[[gpg]] may write after the first armour line.
+So we drop the block from its first armour line up to the first line
+that is none of these, and we drop the last armour line if that is
+what ends it.
+A block that is cut short---by someone trimming a quote---then ends
+where the cut is, and the text after it is still read.
+The prefix of quote characters covers signatures in the messages we
+answer, since we quote them too.
+<<drop armoured blocks>>=
+awk -v begin="^${QUOTE_PREFIX}${PGP_ARMOUR_BEGIN}" \
+    -v end="^${QUOTE_PREFIX}${PGP_ARMOUR_END}" \
+    -v inside="^${QUOTE_PREFIX}(${BASE64_LINE}|${PGP_ARMOUR_HEADER})?$" '
+  $0 ~ begin { armour = 1; next }
+  armour && $0 ~ end { armour = 0; next }
+  armour && $0 ~ inside { next }
+  { armour = 0; print }'
+<<variables>>=
+QUOTE_PREFIX=$'[> \t]*'
+PGP_ARMOUR_BEGIN="-----BEGIN PGP (SIGNATURE|MESSAGE|PUBLIC KEY BLOCK)-----"
+PGP_ARMOUR_END="-----END PGP [A-Z ]+-----"
+PGP_ARMOUR_HEADER="(Version|Comment|Hash|Charset): .*"
+BASE64_LINE="[A-Za-z0-9+/=]+"
+@ A signed message in the old inline style starts with
+[[-----BEGIN PGP SIGNED MESSAGE-----]], and that is not among the
+blocks we drop: what follows that line is the text, and only the
+signature at its end is base64.
+
+Attachments are base64 too, without armour.
+What marks their lines is their shape: base64 is cut into lines of a
+fixed length, 76 characters in MIME and 64 in a signature, with no
+space in them.
+A line of text that long without a space does not occur in the
+languages we write in, so we also drop every line of 60 such
+characters or more, wherever it is.
+<<drop lines of attachments>>=
+grep -vE "^${QUOTE_PREFIX}${BASE64_LINE_OF_ATTACHMENT}$"
+<<variables>>=
+BASE64_LINE_OF_ATTACHMENT="[A-Za-z0-9+/]{60,}={0,2}"
+@ The last line of an attachment is usually shorter and stays.
+That leaves a few characters of random text, and the patterns
+below must cope with it anyway, so they too are narrow
+(\cref{AssignmentGroups,CourseCandidates}).
 
 \subsection{Telling a student's email from a colleague's}
 \label{StudentDisclaimer}
@@ -708,9 +772,8 @@ A student of datintro sends us their solution to an optional exercise.
 \inputminted[highlightlines={4,11,15,17,31}]{text}{email12.txt}
 The subject names the course, but without a year.
 \end{example}
-[[COURSE_NICK]] needs the year: it is any word followed by two digits,
-and without them it would be any word at all.
-So \cref{email12} named nothing, and we guessed over the whole email,
+[[COURSE_NICK]] reads a nick name with its year, as in [[prgi23]], so
+\cref{email12} named nothing, and we guessed over the whole email,
 since a student wrote it:
 \enquote{bash} and \enquote{script} gave the datintro family,
 \enquote{specifies} the programming one, and the email counted for four
@@ -769,8 +832,10 @@ course_candidates() {
 
 The [[course_code]] function prints the code of each candidate.
 A course we know is looked up in the table; an unknown \emph{code} is its 
-own code and passes through; an unknown \emph{nick name} has no code we 
-could print, so the [[grep]] against [[COURSE_CODE]] drops it.
+own code and passes through; an unknown \emph{nick name} would have no
+code we could print, so the [[grep]] against [[COURSE_CODE]] drops it.
+(We only read the nick names we know, see below, so none should get
+this far; the [[grep]] is what makes sure.)
 Since many might match, we sort the output and remove duplicates.
 Finally, we make a disjunct regex from the output.
 <<functions>>=
@@ -820,7 +885,8 @@ course_nick() {
   local nick
   for nick in $(course_candidates "$file"); do
     [[ -n "${COURSE_CODES[$nick]}" ]] && echo "${nick}${YEARS_REGEX}"
-    clean "$file" | grep -Po "${nick}[0-9]{2}(?![A-Za-z0-9])"
+    clean "$file" \
+    | grep -Po "${NOT_IN_WORD_BEFORE}${nick}[0-9]{2}${NOT_IN_WORD_AFTER}"
   done | sort -u \
     | make_disjunct_regex
 }
@@ -850,17 +916,44 @@ output = subprocess.run(["./edumail", "course_nick", "email5.txt"],
 print_verbatim(output.stdout)
 \end{pycode}
 
-For the patterns, the important part is to do a lookahead to see that we don't 
-match substrings of other data.
+For the patterns, the important part is to look around the match, so
+that we don't match substrings of other data.
 For instance, students usually write the course code with lower case and that 
 can be mistaken for a course nick name.
 So we want a lookahead to ensure we get space or punctuation after the course 
-code.
+code, and a lookbehind to ensure the same before it:
+in \cref{email17}'s signature, [[xHk1234+]] ends like a course code,
+and only the letter in front tells us that it doesn't begin like one.
 <<variables>>=
-COURSE_CODE="[A-Za-z]{2,3}[0-9]{3,4}[A-Za-z]?(?![A-Za-z0-9])"
-COURSE_NICK="[a-z]+[0-9]{2}(?![A-Za-z0-9])"
-@ Note that we need the [[-P]] option for that lookahead in the regex to work 
-with [[grep]].
+NOT_IN_WORD_BEFORE="(?<![A-Za-z0-9])"
+NOT_IN_WORD_AFTER="(?![A-Za-z0-9])"
+COURSE_CODE="${NOT_IN_WORD_BEFORE}[A-Za-z]{2,3}[0-9]{3,4}[A-Za-z]?"
+COURSE_CODE="${COURSE_CODE}${NOT_IN_WORD_AFTER}"
+@ Note that we need the [[-P]] option for these lookarounds in the regex
+to work with [[grep]].
+
+A course code is recognizable whoever's course it is, and we keep
+recognizing the codes we don't know:
+a student who names only a course of someone else's has still named a
+course, and we must not guess one of ours instead
+(\cref{CourseCandidates}).
+A nick name is not recognizable in the same way.
+The pattern for it used to be any word followed by two digits, and
+that is a lot of words:
+the [[ht25]] of a course round in \cref{email17}, the [[stud42]] of a
+user name in an email address, and the [[ab12]] in a signature.
+Each counted as a named course, with its year stripped; when no
+course of ours was named, it became a label ([[ht]], [[stud]],
+[[ab]]), and since a named course turns off the guesses, it also hid
+the courses that the email's words suggest.
+So we only read nick names that we know, with their year.
+A nick name of someone else's course, such as [[tilda23]], no longer
+counts as named; a rules file that knows the course can still label
+the email (\cref{LabelRules}).
+<<variables>>=
+COURSE_NICK="${NOT_IN_WORD_BEFORE}(${KNOWN_NICKS})[0-9]{2}"
+COURSE_NICK="${COURSE_NICK}${NOT_IN_WORD_AFTER}"
+@
 
 Usually the students omit the year they took the course, particularly if they 
 took it the last one or two year.
@@ -996,11 +1089,30 @@ modules).
 
 \subsection{Assignment groups}\label{AssignmentGroups}
 
-The assignment groups are the easiest to extract, they're always named 
+The assignment groups are the easiest to extract, they're always named
 something like LAB1, LAB2, LAB3, \etc.
 We can match those with a regex.
+It used to be any three capitals or more followed by digits, which is
+also what \cref{email17}'s signature is full of.
+Dropping the signature removed that source, but not the pattern's
+appetite: in an email as it is stored, the headers in which mail
+servers note how they passed it on give [[TLS1]] and [[SHA384]] the
+same way.
+So we list the kinds of module we track---labs, written
+assignments, seminars and the Excel and mathematics modules of the
+programming course, plus exams and projects for the courses that
+have them---and accept only those.
+A course with another kind of module needs its prefix added here.
+The pattern must also stand alone, as a course code must, so that LAB9
+inside a longer string of letters and digits isn't taken for a module
+either.
+The price is that a module written together with more letters, such
+as [[LAB3a]], is not read either; punctuation after it, as in
+[[LAB3:]] or [[LAB3.]], is fine.
 <<variables>>=
-ASSIGNMENT_GROUP="[A-Z][A-Z][A-Z]+[0-9]+"
+ASSIGNMENT_GROUP_PREFIXES="LAB|INL|SEM|KAL|MAT|TEN|PRO"
+ASSIGNMENT_GROUP="(${ASSIGNMENT_GROUP_PREFIXES})[0-9]+"
+ASSIGNMENT_GROUP="${NOT_IN_WORD_BEFORE}${ASSIGNMENT_GROUP}${NOT_IN_WORD_AFTER}"
 @
 
 Now we'll do like we've done before and grep for these in the email, getting 
@@ -1022,9 +1134,9 @@ ASSIGNMENT_GROUP_DEFAULT="(LAB|INL|SEM)[0-9]+"
 
 The first thing we'll do is to look for things that look like assignment groups 
 in the email.
-We note that we must not match the course code, since those also fit the 
-pattern in [[ASSIGNMENT_GROUP]], so we remove anything that also match a course 
-code.
+We note that we must not match a course code, should one ever start
+with one of the prefixes in [[ASSIGNMENT_GROUP]], so we remove anything
+that also matches a course code.
 The keyword tests below are course specific, so we also determine the course 
 here---once, since [[course]] is the expensive part of this script and the 
 tests below would otherwise each run it again.
@@ -2074,8 +2186,37 @@ keyword families when nothing is named.
 When only keywords identify the course we thus get both [[prgm]] and
 [[prgi]]; the concurrent-label model makes that cheap, and the sum for
 either course is still right.
-A code the table doesn't know passes through unchanged (when it is all
-we have), and a user's rules file can then map it, see below.
+
+A code the table doesn't know is different.
+[[course_candidates]] passes it through when it is all the email names,
+and for the results subcommands that is right: it is the best guess at
+which course to look in.
+As a label it is not.
+A label accumulates time, so it should be a course we keep track of,
+and a string that merely looks like a course code is easy to come by:
+[[CF6064]] and [[UVZ138950]] are among the labels our time tracking
+collected that way.
+So the labels name only the courses in [[COURSE_CODES]].
+An unknown code still does its other job, which is to keep us from
+guessing (\cref{CourseCandidates}): a student who names someone
+else's course has not written about ours, and gets no course label at
+all.
+If we do spend time on such a course, a user's rules file can name it,
+see below.
+<<functions>>=
+known_courses() {
+  local nick
+  while read -r nick; do
+    [[ -n "${nick}" && -n "${COURSE_CODES[$nick]}" ]] && echo "${nick}"
+  done
+  return 0
+}
+@ The test for an empty line comes first, since [[bash]] refuses an
+empty subscript of an associative array.
+Neither [[course_candidates]] nor [[named_courses]] prints an empty
+line today, but both build their output from variables that may be
+empty, and the test keeps such a slip from turning into an error
+message for every email.
 
 Assignment groups are labels too---[[INL1]] and [[LAB2]] are what we
 already track by hand---so we reuse the search from [[assignment_groups]],
@@ -2130,7 +2271,7 @@ labels() {
     if is_stream "$file"; then
       <<labels from what a stream states>>
     else
-      course_candidates "$file"
+      course_candidates "$file" | known_courses
       if <<test for TA terms>>; then
         <<labels about the course as a whole>>
       else
@@ -2177,7 +2318,7 @@ The literal assignment groups stay, since a program that prints
 [[LAB1]] means it.
 There is no assistant test either: a program does not apply for a job.
 <<labels from what a stream states>>=
-named_courses "$file"
+named_courses "$file" | known_courses
 <<literal assignment groups in [[file]]>>
 labels_rules "$file"
 @
@@ -2683,6 +2824,94 @@ for prefix in ["from", "stream"]:
     lines.append(f"{prefix}: " + " ".join(output.stdout.decode().split()))
 print_verbatim("\n".join(lines))
 \end{pycode}
+
+\Cref{email17}, our signed answer about the cron job, used to give
+ten labels, nine of them from the signature.
+With the signature dropped and only our modules and nick names read,
+what is left is the module it names and the course its subject
+suggests: [[restlabb]] is the programming courses' script.
+\begin{pycode}
+output = subprocess.run(["./edumail", "labels", "email17.txt"],
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+The guess is new.
+Before, the email counted as naming courses---[[ht25]] and [[stud42]]
+outside the signature, [[Kprgi24]] inside it---and a named course
+turns the guesses off.
+
+The patterns are the last defence, so let's see them alone.
+We break the first armour line, so that the block isn't recognized,
+and cut the signature's lines of 64 characters in two, so that they
+are too short to be taken for an attachment's.
+What is left of the signature is then just random text, and the only
+thing in it the patterns accept is [[LAB9]], one of our modules
+standing alone between two signs of base64.
+Its [[zLAB4]] and [[Kprgi24]] are not accepted, since a letter stands
+in front of them:
+\begin{pycode}
+signed = open("email17.txt").read()
+lines = []
+for line in signed.replace("-----BEGIN PGP", "BEGIN PGP").split("\n"):
+    lines += [line[:40], line[40:]] if len(line) == 64 else [line]
+output = subprocess.run(["./edumail", "labels"],
+                        input="\n".join(lines).encode(),
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+
+A signature that is cut short ends where the cut is.
+Here we quote a student's signed message, trimmed below the armour's
+first lines, and answer under the quote:
+\begin{pycode}
+email = ("Subject: Re: Inlämning\n\n"
+         "> Här är min lösning.\n"
+         "> -----BEGIN PGP SIGNATURE-----\n"
+         ">\n"
+         "> iQIzBAABCgAdFiEE2vhBQThLHLiJRRDR8X4wAqLXj8gFAmr99HkACgkQ8X4wAqLX\n"
+         "\n"
+         "LAB3 är godkänd nu.\n")
+output = subprocess.run(["./edumail", "labels"], input=email.encode(),
+                        capture_output=True, env=norules)
+print_verbatim(output.stdout)
+\end{pycode}
+Had we dropped everything up to the last armour line, as a range in
+[[sed]] would, the answer would have gone with the quote.
+
+A student who names only a course that isn't ours gets no course
+label, and no guess either: the code counts as named, so the
+programming keywords (\enquote{labb 3}, \enquote{python}) are not
+consulted.
+Without the code, they are.
+\begin{pycode}
+email = ("Subject: Fråga om DD1320\n\nHur gör jag labb 3 i python?\n\n"
+         "Observera att avsändaren inte är anställd vid "
+         "Kungliga Tekniska högskolan.\n")
+lines = []
+for subject in ["Fråga om DD1320", "Fråga"]:
+    text = email.replace("Fråga om DD1320", subject)
+    output = subprocess.run(["./edumail", "labels"], input=text.encode(),
+                            capture_output=True, env=norules)
+    lines.append(f"{subject}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+A rules file that knows the course can label it all the same, as the
+seed rules in the [[nymutt]] documentation do for DD1320.
+Mail from a program is held to the same standard: a job that reports
+on someone else's course states its code, and the code is no more a
+label for that.
+\begin{pycode}
+rules = tempfile.NamedTemporaryFile("w", suffix=".rules", delete=False)
+rules.write("stream:Cron\\sDaemon  admin\n")
+rules.close()
+email = ("From: Cron Daemon <root@example.org>\nSubject: Cron\n\n"
+         "DD9999 LAB2: 3 rapporterade\n")
+output = subprocess.run(["./edumail", "labels"], input=email.encode(),
+                        capture_output=True,
+                        env=dict(norules, LABELS_RULES=rules.name))
+print_verbatim(output.stdout)
+\end{pycode}
+
 An email matching neither a course test nor a rule yields nothing at all;
 it's the caller's job to fall back to something sensible---[[nymutt]]
 always adds a base [[email]] label of its own.

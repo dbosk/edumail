@@ -1,0 +1,42 @@
+Date: Wed, 18 Nov 2026 19:52:10 +0100
+From: Daniel Bosk <dbosk@kth.se>
+To: Kollegan Kollegasson <kollegan@kth.se>
+Cc: Studenten Studentensson <stud42@kth.se>
+Subject: Re: Cron <dbosk@rpi> ${HOME}/restlabb.sh
+MIME-Version: 1.0
+Content-Type: multipart/signed; micalg=pgp-sha512;
+	protocol="application/pgp-signature"; boundary="exampleboundary"
+
+--exampleboundary
+Content-Type: text/plain; charset=utf-8
+
+Den här kan du bortse från, jag har redan rapporterat den.
+
+        Daniel
+
+On ons 18 nov 2026 19:40:01, Cron Daemon wrote:
+> Inlämnad:         2026-11-18 17:52:40
+> Kursomgång:       ht25
+> Uppgift:          LAB3
+
+--exampleboundary
+Content-Type: application/pgp-signature; name="signature.asc"
+
+-----BEGIN PGP SIGNATURE-----
+
+1Ju7lFmOOA1/xNaBos1GH0dkTWupPyOe0SnySNGsCd2+GrUZ9L8Cz3o7bX+4HYgg
+jWJCgJ2yo1eqMIurBBmyqRZBD7M+noQm+ApGzvjIXWSATThsGZyhoRlS1i+fgM71
+Jit7c4dTlxn5yflx0OMn629196JgugzLAB4/dqC8WGyb3rblLzYFYlvm7eRG8+cG
+loZeBO+sqGwaiDIHDjnx+ABC12/xD8w+2x0eYIaJtrHVzwOtKRGRpqQ8q0F8/ZHi
+P4J/JdeeZve7QW1Nlirf4MZOSVSi/JDQIXhWTXjapOJBk3z9gGG+Az6r/CfcLMF8
+VySXJZOt7KRMTIidxKZJXab12=5tvd/Aiiidz2ihBhIetPvO2ISa5lPUbWBquWR1
+wiTpZbVA9+IsQ3jfyXTNwfireqfFbVKprgi24/YyXv4Ph/FCZVCDSxI/leEbLJeF
+n8GGEQ+RJByMlrP2bDcWxHk1234+u3AEOrJMwzooFMg47Elk4hiJCTYxR/Nwnpmb
+qQjfLcQB7DWnpesd+S/vmD5OJKQTTmaX1is3wxz60dOGes9Ccal2ovGhbDJo72rh
+37vfGmU+fwKEGoW528UX+LAB9/i3onqI4uQ4QQxG6E7jAwNYw8DMMo9iZ0gJ76dM
+83HYuYXk8C1YNX7/f580hIOl5oXIBOeJUmxtNRC3OhRgtad0a1lTBPoQ69LUq+4d
+DS0gVZHDEU+SX6pTrqP6d+qW1G5W2p7tnh+pRKcT
+=Q7x2
+-----END PGP SIGNATURE-----
+
+--exampleboundary--
