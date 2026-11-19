@@ -60,16 +60,17 @@ clean:
 
 .PHONY: install
 PREFIX=${HOME}
+# carryover.sh reads its rules from here
+CANVASLMS_CONFIG=$${XDG_CONFIG_HOME:-$${HOME}/.config}/canvaslms
 install: edumail nymutt mutt .muttrc.nytid labels.rules carryover.rules
 	install -m 755 edumail nymutt mutt ${PREFIX}/bin
 	install -m 644 .muttrc.nytid ${HOME}/.muttrc.nytid
 	mkdir -p ${HOME}/.config/edumail
 	[ -e ${HOME}/.config/edumail/labels.rules ] \
 	  || install -m 644 labels.rules ${HOME}/.config/edumail/labels.rules
-	mkdir -p ${HOME}/.config/canvaslms
-	[ -e ${HOME}/.config/canvaslms/carryover.rules ] \
-	  || install -m 644 carryover.rules \
-	       ${HOME}/.config/canvaslms/carryover.rules
+	mkdir -p ${CANVASLMS_CONFIG}
+	[ -e ${CANVASLMS_CONFIG}/carryover.rules ] \
+	  || install -m 644 carryover.rules ${CANVASLMS_CONFIG}/carryover.rules
 
 .PHONY: release
 release: edumail.pdf edumail

@@ -1846,19 +1846,29 @@ picks out the student's.
 <<functions>>=
 carryover() {
   local file=$(file_or_stdin "$1")
-  local script rounds round
+  local script students courses rounds round
   <<find the [[script]], or say that it is missing>>
-  echo "STUDENT=\"$(student "$file" | student_regex)\""
-  rounds=$(current_rounds "$(course_candidates_regex "$file")")
+  students=$(student "$file")
+  <<say if the email gives several addresses>>
+  echo "STUDENT=$(student_regex <<< "${students}" | shell_quote)"
+  courses=$(course_candidates_regex "$file")
+  rounds=$(current_rounds "${courses}")
   if [[ -z "${rounds}" ]]; then
     <<say that we give no round of the course now>>
   fi
   for round in ${rounds}; do
-    printf '%q -u "${STUDENT}" %q\n' "${script}" "${round}"
+    printf '%q -u "${STUDENT:?}" %q\n' "${script}" "${round}"
   done
 }
 @ The [[%q]] quotes the path and the round for the shell, should they
 hold a space.
+The [[:?]] is for the student filter.
+Without [[-u]], or with an empty one, the script plans for every
+student of the round, and that is not what we asked for when we answer
+one of them.
+So if we select only the lines below the [[STUDENT]] line, or the
+[[STUDENT]] line came out empty, the shell stops before it runs the
+script (\cref{CarryoverEmails}).
 
 The round to carry into is the one the student takes now.
 The email may well name an earlier round---\enquote{I took prgi23}---but
@@ -1880,10 +1890,11 @@ We say so, and print a line that we can complete with the round:
 print_verbatim(carryover_lines("email14.txt"))
 \end{pycode}
 <<say that we give no round of the course now>>=
-echo "# no round of $(course_candidates_regex "$file") in our register;" \
+echo "# nytid gives no round of ${courses:-any course} now;" \
      "replace ROUND"
 rounds=ROUND
-@
+@ We say \enquote{nytid gives} rather than \enquote{we give}: a
+[[nytid]] that is missing or fails gives no rounds either.
 
 The student filter matches more than one would think.
 [[canvaslms]] matches it case-insensitively against each student's name
@@ -1893,8 +1904,15 @@ matches any character.
 The commands write grades, so we want exactly the student who wrote.
 We escape what a regex would read as an operator, and anchor the
 identifier at both ends.
-[[student]] can find several addresses, one per line; we keep them all
-as a disjunction and let the output show them.
+[[student]] can find several addresses, one per line, and we keep them
+all as a disjunction.
+But one of them may be someone else's---\cref{email8} quotes a message
+with its own [[To:]] line---so we say so, and leave the choice to us.
+<<say if the email gives several addresses>>=
+if [[ "${students}" == *$'\n'* ]]; then
+  echo "# several addresses in the email: keep only the student's"
+fi
+@
 <<functions>>=
 student_regex() {
   sed 's/[][\.*^$()+?{}|]/\\&/g' | make_disjunct_regex | sed 's/^/^/; s/$/$/'
@@ -1904,8 +1922,19 @@ student_regex() {
 print_verbatim(carryover_lines("email1.txt").splitlines()[0])
 \end{pycode}
 with parentheses that do no harm.
-In double quotes, [[bash]] leaves the backslashes and the final [[$]]
-alone, as the test in \cref{CarryoverEmails} shows.
+
+The name is the sender's text, and the line will be run by our shell.
+In double quotes, a [[\"]] in the name would end the value early, and a
+backquote would run a command; a [[$]] or a backslash would come out
+changed.
+In single quotes everything stays as it is, except a single quote
+itself, which we end the quotes for, escape, and open them again:
+[[O'Hara]] becomes [['O'\''Hara']].
+<<functions>>=
+shell_quote() {
+  sed "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/"
+}
+@ The test in \cref{CarryoverEmails} tries this on such names.
 
 \paragraph{Finding the script}
 [[carryover.sh]] is installed with the Python code of [[canvaslms]],
@@ -1982,8 +2011,11 @@ is.
 So [[carryover.sh]] takes rules: a course code and a regex, separated by
 spaces or tabs, and every name that the regex matches is the same
 assignment.
-It tries a course's rules in order, and the first whose regex matches
-the old name and exactly one name in the new room decides.
+It tries a course's rules in order, and a rule decides when its regex
+matches the old name and some name in the new room: if one, that is the
+assignment; if several, it reports them and carries nothing.
+A rule that matches no name in the new room decides nothing, and the
+next is tried.
 <<[[carryover.rules]]>>=
 DD2520  ^((Mandatory|MANDATORY):? )?Cryptanalysis of Ciphertexts$
 DD2520  ^((Mandatory|MANDATORY):? )?Implement AES \(Kattis Problem\)$
@@ -2091,38 +2123,91 @@ holds it or one with another character for the dot.
 \Cref{email6} gives no hint of the course, so it gets a line for each
 round in the register.
 
+The student's name comes from the email, and the sender writes it.
+Names that a shell or a regex would read as more than a name must still
+reach the script as they are, and match only themselves.
+We give each to [[edumail]] in a made-up email, run the lines in a
+directory of their own and check what the script got:
+\begin{pycode}
+hostile = ['"Last, First"', "Ann O'Hara", "Eve `touch PWNED` X",
+           "dollar$x back\\slash", "a.b|c (d) [e] *+?{}^"]
+lines = []
+for name in hostile:
+  email = f"To: {name} <someone@example.org>\nSubject: lab\n\n"
+  output = subprocess.run(["./edumail", "carryover"], input=email,
+                          capture_output=True, text=True,
+                          env=stand_in_env).stdout
+  directory = tempfile.mkdtemp()
+  args = subprocess.run(["bash", "-c", output], cwd=directory,
+                        capture_output=True, text=True,
+                        env=stand_in_env).stdout.splitlines()
+  student = args[1]
+  exact = bool(re.search(student, name, re.IGNORECASE))
+  others = [n for n in [name + "x", "x" + name, name.replace(" ", "  ")]
+            if re.search(student, n, re.IGNORECASE)]
+  lines.append(f"{name}: matches itself {exact}, others {others}, "
+               f"files made {os.listdir(directory)}")
+print_verbatim("\n".join(lines))
+\end{pycode}
+Without the [[STUDENT]] line---we selected only the lines below it---or
+with an empty one, the shell stops before the script runs:
+\begin{pycode}
+output = carryover_lines("email2.txt")
+for lines in [output.split("\n", 1)[1], 'STUDENT=""\n' + output.split("\n", 1)[1]]:
+  result = subprocess.run(["bash", "-c", lines], capture_output=True,
+                          text=True, env=stand_in_env)
+  print_verbatim(f"status {result.returncode}, script got {result.stdout.split()}")
+\end{pycode}
+\Cref{email8} has two addresses, its sender's and one in a quoted
+message, and we are told to choose:
+\begin{pycode}
+print_verbatim("\n".join(carryover_lines("email8.txt").split("\n")[:2]))
+\end{pycode}
+
 The script is found from the first line of [[canvaslms]].
 Here a stand-in [[canvaslms]] names a stand-in Python, which prints
-where the script is; then another names a Python that prints nothing,
-as one would without the script; and then nothing is on the [[PATH]]
-but the system's programs, which can't import [[canvaslms]]:
+where the script is.
+Then another names a Python that prints a place where there is no
+script, as an installed [[canvaslms]] without the script does.
+Then there is no [[canvaslms]], and then a script on the [[PATH]].
+The system's own [[python3]] is replaced by one that prints a place
+without a script, so that what is installed on the system doesn't
+matter.
 \begin{pycode}
-python = os.path.join(stand_in, "python")
-with open(python, "w") as file:
-  file.write(f"#!/bin/bash\necho {stand_in}/carryover.sh\n")
-os.chmod(python, 0o755)
-def canvaslms_running(interpreter):
+def directory_with(name, text):
   directory = tempfile.mkdtemp()
-  with open(os.path.join(directory, "canvaslms"), "w") as file:
-    file.write(f"#!{interpreter}\n")
+  with open(os.path.join(directory, name), "w") as file:
+    file.write(text)
+  os.chmod(os.path.join(directory, name), 0o755)
   return directory
-system = "/usr/bin:/bin"
+python = os.path.join(directory_with("python",
+                        f"#!/bin/bash\necho {stand_in}/carryover.sh\n"),
+                      "python")
+nowhere = directory_with("python3", "#!/bin/bash\necho /nonexistent\n")
+def canvaslms_running(interpreter):
+  return directory_with("canvaslms", f"#!{interpreter}\n")
+on_path = directory_with("carryover.sh", "#!/bin/bash\n")
+system = nowhere + os.pathsep + "/usr/bin:/bin"
 lines = []
 for path, email in [(canvaslms_running(python) + os.pathsep + system, None),
-                    (canvaslms_running("/bin/true") + os.pathsep + system,
-                     None),
-                    (system, None), (system, "email2.txt")]:
+                    (canvaslms_running(nowhere + "/python3")
+                     + os.pathsep + system, None),
+                    (system, None),
+                    (on_path + os.pathsep + system, None),
+                    (system, "email2.txt"), (system, "email6.txt")]:
   env = {k: v for k, v in os.environ.items() if k != "CARRYOVER_SH"}
   env["PATH"] = path
   args = ["carryover", email] if email else ["carryover_script"]
   result = subprocess.run(["./edumail", *args], env=env,
                           capture_output=True, text=True)
   lines.append(f"$ edumail {' '.join(args)}  # status {result.returncode}")
-  lines.append(result.stdout.replace(stand_in, "STAND_IN").rstrip())
+  lines.append(result.stdout.replace(stand_in, "STAND_IN")
+                .replace(on_path, "ON_PATH").rstrip())
 print_verbatim("\n".join(lines))
 \end{pycode}
 Without the script we still get the lines, with its name.
-(That [[PATH]] has no [[nytid]] either, hence no round.)
+(That [[PATH]] has no [[nytid]] either, hence no round; and
+\cref{email6} names no course.)
 
 
 \subsection{The default rules on real names}
@@ -2144,10 +2229,13 @@ without Canvas:
 sourced, it only defines its functions, and [[carryover_plan]] decides
 from files that we write in its directory, as [[canvaslms]] would have
 printed them.
+So this test needs the script, and the build fails without it; with a
+[[canvaslms]] that doesn't ship it yet, [[CARRYOVER_SH]] can name a copy.
 \begin{pycode}
 import os, re, subprocess, tempfile, collections
 script = subprocess.run(["./edumail", "carryover_script"],
                         capture_output=True, text=True).stdout.strip()
+assert script, "carryover.sh not found: set CARRYOVER_SH to check the rules"
 rules = open("carryover.rules").read()
 rooms = collections.defaultdict(lambda: collections.defaultdict(list))
 for line in open("carryover-names.tsv"):
@@ -2164,7 +2252,7 @@ def plan(data, code):
   assert result.returncode == 0, result.stderr
   return result.stdout
 lines = []
-for code in sorted(rooms) if script else []:
+for code in sorted(rooms):
   latest = max(rooms[code], key=term)
   renamed, trouble = set(), set()
   for room in rooms[code]:
@@ -2199,8 +2287,6 @@ for code in sorted(rooms) if script else []:
   lines.append(f"{code}, into {latest}:")
   lines += [f"  {a}\n    -> {b}" for a, b in sorted(renamed)]
   lines += [f"  ! {t}" for t in sorted(trouble)]
-if not script:
-  lines = ["carryover.sh not found: the rules were NOT checked"]
 print(r"\begin{Verbatim}[breaklines,breakanywhere,fontsize=\footnotesize]")
 print("\n".join(lines))
 print(r"\end{Verbatim}")
