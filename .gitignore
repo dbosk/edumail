@@ -11,6 +11,7 @@ mutt
 mutt.sh
 .muttrc.nytid
 labels.rules
+carryover.rules
 nymutt.pdf
 nymutt.tex
 # raw threads behind the pseudonymised examples: real names, never commit
