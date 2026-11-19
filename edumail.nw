@@ -1766,6 +1766,418 @@ print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
 
 
+\section{Carrying results over from earlier rounds}\label{CarryoverSection}
+
+Every round of a course has some students who took it before.
+They only do the assignments they haven't passed, and their earlier
+results stay in the Canvas room of the round they took.
+The commands of the results subcommands read one room
+(\cref{GradingSchemes}): in the new one, [[--missing]] lists what such a
+student passed a year ago, and the report never sees the module
+complete.
+So we copy the passed results into the new room, and since every course
+we give has returning students, the course is an argument and not part
+of the code.
+
+This subcommand starts from a course and not from an email, but it
+keeps the idea of the results subcommands: it prints commands for us to
+look at, and we run them.
+The commands here write grades to Canvas, which is all the more reason
+to read them first.
+\begin{minted}{bash}
+edumail carryover tilkry27 > carryover.sh
+less carryover.sh
+bash carryover.sh
+\end{minted}
+What it does print, it must decide from what Canvas holds, so unlike the
+results subcommands it reads Canvas itself.
+It reads the new room and the earlier ones, works out which grades to
+copy, and prints the commands:
+<<functions>>=
+carryover() {
+  local course="$1" renamed="${2:-/dev/null}"
+  <<find the room of [[course]] and its earlier rounds>>
+  <<fetch the students, assignments and grades of the rounds>>
+  carryover_plan "${data}" "${renamed}" "${id}"
+  rm -r "${data}"
+}
+@ The second argument is a file of assignments that were renamed between
+rounds; we come back to it in \cref{CarryoverRenamed}.
+All the deciding is done by [[carryover_plan]], which reads only the
+files that [[carryover]] fetched.
+That way we can try the decisions on rounds that we make up
+(\cref{CarryoverTesting}), without Canvas.
+The files hold the students' grades, so we remove them when we are
+done.
+
+
+\subsection{The earlier rounds}
+
+A course has a Canvas room for each round, and the rooms share nothing
+reliable but the course code at the start of their Canvas course code:
+the rooms of datintro include [[DD1301 HT20 (50850)]],
+[[DD1301HT21]] and [[DD1301 HT23 (datintro23p2)]].
+So we look up the room that [[course]] names and take its course code:
+two letters and three digits, then a digit or, as in the
+[[DA150X]] of the seed rules in the [[nymutt]] documentation, a letter.
+We take it from the start of the Canvas course code and nothing more,
+since [[DD1301HT21]] has no space after it.
+<<variables>>=
+KTH_COURSE_CODE="[A-Z]{2}[0-9]{3}[0-9A-Z]"
+@ The grades will be written to the room that [[course]] matches, so it
+must match exactly one.
+We keep the room's Canvas ID, which the commands will name it by: a
+regex on the name, such as [[tilkry27]], is easy to get wrong in a way
+that matches another room too.
+<<find the room of [[course]] and its earlier rounds>>=
+local room=$(canvaslms courses -a -i "${course}")
+if [[ -z "${room}" || $(wc -l <<< "${room}") -ne 1 ]]; then
+  echo "${course}: must match exactly one Canvas room" >&2
+  return 1
+fi
+local id=$(cut -f 1 <<< "${room}")
+local code=$(cut -f 2 <<< "${room}" | grep -oE "^${KTH_COURSE_CODE}")
+if [[ -z "${code}" ]]; then
+  echo "${course}: no course code in $(cut -f 2 <<< "${room}")" >&2
+  return 1
+fi
+@ Every other room with that code is an earlier round.
+We don't compare dates:
+some rooms have none (tilkry23 has no start date in Canvas), and a room
+of a round that hasn't started holds no grades, so it costs nothing to
+include.
+Without the [[-a]], [[canvaslms courses]] lists only the current
+rooms, and the earlier rounds are the ones that are over.
+<<find the room of [[course]] and its earlier rounds>>=
+local rounds=$(canvaslms courses -a -i \
+               | awk -F '\t' -v code="${code}" -v id="${id}" \
+                   'index($2, code) == 1 && $1 != id { print $1 }')
+if [[ -z "${rounds}" ]]; then
+  echo "# ${course}: no earlier rounds of ${code} in Canvas"
+  return 0
+fi
+@ The guard for no rounds is not only for the message:
+the regex we make of the rounds below would be [[^()$]], and we'd rather
+not find out what Canvas makes of that.
+
+
+\subsection{What the rounds hold}
+
+From the new room we need its students, its assignments and which of
+them are already graded; from the earlier rounds, every submission.
+We keep each in a file of its own in a temporary directory, which is
+all that [[carryover_plan]] gets.
+<<fetch the students, assignments and grades of the rounds>>=
+local data=$(mktemp -d)
+canvaslms users -sc "^${id}$" | cut -f 2 > "${data}/students"
+canvaslms assignments list -c "^${id}$" | cut -f 3 > "${data}/assignments"
+canvaslms submissions list -c "^${id}$" -l \
+  | awk -F '\t' '$4 != ""' | cut -f 2,3 > "${data}/graded"
+canvaslms submissions list -c "^($(paste -sd '|' <<< "${rounds}"))$" -l \
+  > "${data}/earlier"
+cut -f 2 <<< "${room}" > "${data}/room"
+@ A student is their login ID, the second column of [[canvaslms
+users]] and, with [[-l]], the third of [[canvaslms submissions list]].
+We don't go by the name, since two students can share one.
+The other columns of [[submissions list]] are the room, the assignment,
+the grade and the dates of submission and grading; a submission that
+nobody has graded has an empty grade.
+Canvas has a submission for every student and assignment, submitted or
+not---tilkry25 has 87 students, 39 assignments and 3393
+submissions---so the earlier rounds' file holds every student's grade in
+every assignment of those rounds.
+The rooms' names in its first column are what the comments to the
+students will name.
+Reading every submission of every earlier round takes a while:
+for datintro26, with nine earlier rooms and some 21000 submissions, it
+took six minutes.
+
+
+\subsection{Deciding what to carry over}
+
+[[carryover_plan]] reads the files and prints the commands, as one
+[[awk]] program:
+<<functions>>=
+carryover_plan() {
+  local data="$1" renamed="$2" id="$3"
+  awk -F '\t' -v q="'" -v id="${id}" -v message="${CARRYOVER_MESSAGE}" \
+      -v renamed="${renamed}" -v students="${data}/students" \
+      -v assignments="${data}/assignments" -v graded="${data}/graded" \
+      -v room="$(cat "${data}/room" 2>/dev/null)" '
+    <<[[awk]] functions for the carry-over>>
+    BEGIN { <<rank the passing grades>> }
+    <<read the new room and the renamed assignments>>
+    <<keep each student's best pass of each assignment>>
+    END {
+      <<print the commands that carry the grades over>>
+      <<print what could not be carried over>>
+    }' "${renamed}" "${data}/students" "${data}/assignments" \
+       "${data}/graded" "${data}/earlier" \
+  | sort -t $'\t' -k 1,1n -k 2,2nr -k 3 | cut -f 3-
+}
+<<variables>>=
+CARRYOVER_MESSAGE="${CARRYOVER_MESSAGE:-Result carried over from}"
+@ The program prints each line behind two numbers, which the [[sort]]
+orders the lines by: what kind of line it is, the commands first and the
+comments after, and then a count, the largest first; the lines that tie
+on both are sorted as text.
+The message is what the students see as a comment on the grade, with
+the name of the round's room after it; it can be set from the
+environment, for a course given in Swedish.
+
+The files come in a fixed order, and we tell them apart by name.
+Each of the rules below ends in [[next]], so only the last file, the
+earlier rounds', reaches the rules after them.
+<<read the new room and the renamed assignments>>=
+FILENAME == renamed     { new_name[$1] = $2; next }
+FILENAME == students    { student[$1] = 1; next }
+FILENAME == assignments { in_room[$1] = 1; next }
+FILENAME == graded      { done[$1, $2] = 1; next }
+@ Counting files with [[FNR == 1]] would have been shorter, but an empty
+file has no first line: a room where nothing is graded yet would have
+been taken for the earlier rounds.
+
+\subsubsection{Which grades count}
+
+A grade is worth carrying over if it passes.
+We count the grades that [[canvaslms]] counts as passing in its summary
+modules: A to E, P, and the spellings \enquote{P+} and
+\enquote{complete} that Canvas also uses for a pass.
+Everything else stays: a fail, a grade in points, an empty grade.
+Points are what datintro scores its interactive videos in, the group
+\enquote{Learning material}, and that group belongs to no module.
+Of several passes of the same assignment, from different rounds or a
+redone one, we take the best: a letter above a pass, since it says
+more.
+\enquote{Complete} is just another way to write P, so the two are
+equal.
+<<rank the passing grades>>=
+rank["A"] = 7; rank["B"] = 6; rank["C"] = 5; rank["D"] = 4; rank["E"] = 3
+rank["P+"] = 2; rank["P"] = 1; rank["COMPLETE"] = 1
+@ Between equal passes, we take the one graded last.
+[[canvaslms]] prints the dates as [[YYYY-MM-DD HH:mm]], which sort as
+strings, but it prints [[N/A]] when there is none, and that would sort
+after every date; so we read it as no date.
+
+\subsubsection{Renamed assignments}\label{CarryoverRenamed}
+
+An assignment is the same in two rounds when it has the same name.
+That is often not the case:
+of the 48 assignments of tilkry26, 30 have a name from tilkry25.
+Some were renamed and some are new, and only we know which is which.
+So we may give a file of the renamed ones, each line the old name and
+the new, separated by a tab, as for the rest of the data here:
+\begin{minted}{text}
+INL1Written	INL1Written Final
+\end{minted}
+The assignment groups (LAB1, INL1) did not change between the rounds,
+but we don't carry whole groups over:
+a group's assignments change too, and a student who passed the group a
+year ago has the module in Ladok already.
+What a returning student lacks are the assignments of a module they
+did not finish.
+
+\subsubsection{The best pass}
+
+With that, the earlier rounds' file is read line by line.
+<<keep each student's best pass of each assignment>>=
+{
+  <<skip what we shouldn't carry over>>
+  key = name SUBSEP $3
+  date = ($6 == "N/A" ? "" : $6)
+  if (!(key in best) || r > best_rank[key] \
+      || (r == best_rank[key] && date > best_date[key])) {
+    best[key] = $4; best_rank[key] = r; best_date[key] = date
+    from[key] = $1
+  }
+}
+@ We skip the lines of students who are not in the new room, and the
+grades that don't pass.
+The assignment gets its new name, if it has one; if the new room has no
+assignment by that name, we count the student and the grade under the
+old name, to report it later.
+What is graded in the new room already, we leave alone, even a fail:
+whoever graded it saw something we don't.
+<<skip what we shouldn't carry over>>=
+if (!($3 in student)) next
+r = rank[toupper($4)]
+if (!r) next
+name = ($2 in new_name ? new_name[$2] : $2)
+if (!(name in in_room)) { lost[$2, $3] = 1; next }
+if ((name, $3) in done) { kept[name, $3] = 1; next }
+@
+
+\subsubsection{The commands}
+
+The students who get the same grade from the same round in the same
+assignment can share a command, since [[canvaslms grade]] grades every
+student its [[-u]] regex matches.
+That makes far fewer calls to Canvas than one per student and
+assignment.
+<<print the commands that carry the grades over>>=
+for (key in best) {
+  split(key, part, SUBSEP)
+  cmd = part[1] SUBSEP best[key] SUBSEP from[key]
+  users[cmd] = (cmd in users ? users[cmd] "|" : "") regex(part[2])
+}
+for (cmd in users) {
+  split(cmd, part, SUBSEP)
+  printf "1\t0\tcanvaslms grade -c %s -a %s -g %s -m %s -u %s\n",
+    quote("^" id "$"), quote("^" regex(part[1]) "$"), quote(part[2]),
+    quote(message " " part[3] "."), quote("^(" users[cmd] ")$")
+}
+@ The names in the commands are regexes, and they are read by the shell
+first.
+An assignment name may hold anything---[[(]], a dot, an apostrophe---so
+we escape what a regex would read as an operator, anchor it, and put it
+in single quotes, which leave everything alone but a single quote.
+That one we end the quote for, escape and start the quote again.
+The program itself stands in single quotes in the script, so it can't
+contain one; it gets it as the variable [[q]] instead.
+<<[[awk]] functions for the carry-over>>=
+function regex(s) {
+  gsub(/[][\\.^$*+?(){}|\/]/, "\\\\&", s)
+  return s
+}
+function quote(s) {
+  gsub(q, q "\\" q q, s)
+  return q s q
+}
+@
+
+What we can't carry over, we report as comments, so that the output can
+still go to the shell as it is.
+A pass in an assignment that the new room doesn't have is what the file
+of renamed assignments is for, so we list those names with the number
+of students who passed them; the most common ones first, as they are the
+ones most worth a line in that file.
+<<print what could not be carried over>>=
+for (key in lost) {
+  split(key, part, SUBSEP)
+  passed[part[1]]++
+}
+for (name in passed)
+  printf "2\t%d\t# %d passed %s, which %s does not have\n",
+    passed[name], passed[name], quote(name), room
+for (key in kept) kept_count++
+if (kept_count)
+  printf "3\t0\t# %d left alone, as already graded in %s\n",
+    kept_count, room
+@
+
+
+\subsection{Testing the decisions}\label{CarryoverTesting}
+
+We make up two earlier rounds of tilkry and a new one, with a student
+for each rule above:
+\begin{description}
+\item[returning] passed four assignments in tilkry25: one that is the
+  same in the new room, one that was renamed, one whose name holds the
+  characters that need escaping, and one that the new room doesn't have.
+  In the quiz, the pass from tilkry26 is the later of two equal ones.
+\item[again] took both rounds and passed the lab twice (P+, then P),
+  the written assignment twice (A, then C) and the quiz twice, the
+  second time without a grading date.
+\item[second] passed the lab in tilkry25, like returning, so the two
+  share a command.
+\item[failed] failed the lab and got points in the quiz.
+\item[graded] passed the lab, which is graded in the new room already.
+\item[left] passed the lab but is not in the new room.
+\end{description}
+In the earlier rounds they have these grades, in the columns of
+[[submissions list]] but without the submission date:
+\begin{pycode}
+students = ["returning", "again", "second", "failed", "graded", "new"]
+assignments = ["LAB1 Implement AES", "INL1Written Final",
+               "Seminar (Bob's part)", "INL1Quiz Ciphers"]
+graded = [("LAB1 Implement AES", "graded")]
+r25, r26 = "DD2520 VT25 (tilkry25)", "DD2520 VT26 (tilkry26)"
+earlier = [
+  (r25, "LAB1 Implement AES",   "returning", "P",  "2025-02-03 10:00"),
+  (r25, "INL1Written",          "returning", "B",  "2025-03-05 10:00"),
+  (r25, "Seminar (Bob's part)", "returning", "complete",
+                                                   "2025-02-10 10:00"),
+  (r25, "AES presentation",     "returning", "P",  "2025-02-11 10:00"),
+  (r25, "INL1Quiz Ciphers",     "returning", "P",  "2025-02-01 11:00"),
+  (r26, "INL1Quiz Ciphers",     "returning", "complete",
+                                                   "2026-02-01 11:00"),
+  (r25, "LAB1 Implement AES",   "again",     "P+", "2025-03-01 10:00"),
+  (r26, "LAB1 Implement AES",   "again",     "P",  "2026-03-01 10:00"),
+  (r25, "INL1Written",          "again",     "A",  "2025-03-05 10:00"),
+  (r26, "INL1Written",          "again",     "C",  "2026-03-05 10:00"),
+  (r25, "INL1Quiz Ciphers",     "again",     "P",  "2025-02-01 11:00"),
+  (r26, "INL1Quiz Ciphers",     "again",     "P",  "N/A"),
+  (r25, "LAB1 Implement AES",   "second",    "P",  "2025-02-04 10:00"),
+  (r26, "LAB1 Implement AES",   "failed",    "F",  "2026-02-02 10:00"),
+  (r26, "INL1Quiz Ciphers",     "failed",    "2.5", "2026-02-02 10:00"),
+  (r26, "LAB1 Implement AES",   "graded",    "P",  "2026-02-02 10:00"),
+  (r26, "LAB1 Implement AES",   "left",      "P",  "2026-02-02 10:00"),
+]
+renamed = [("INL1Written", "INL1Written Final")]
+import os, tempfile
+data = tempfile.mkdtemp()
+def login(name):
+  return f"{name}@kth.se"
+def write(name, rows):
+  with open(os.path.join(data, name), "w") as file:
+    for row in rows:
+      file.write("\t".join(row) + "\n")
+write("students", [ [login(s)] for s in students])
+write("assignments", [ [a] for a in assignments])
+write("graded", [ [a, login(s)] for a, s in graded])
+write("room", [ ["DD2520 VT27 (tilkry27)"] ])
+write("earlier", [ [r, a, login(s), g, "2025-01-01 10:00", d]
+                  for r, a, s, g, d in earlier])
+write("renamed", renamed)
+print_verbatim("\n".join("\t".join([r[0][14:-1], a, s, g, d])
+                         for r, a, s, g, d in earlier))
+\end{pycode}
+In the new room, graded's lab is graded already, and there is a file
+renaming INL1Written to INL1Written Final.
+With a Canvas ID for the new room, this is what we get:
+\begin{pycode}
+plan = subprocess.run(["./edumail", "carryover_plan", data,
+                       os.path.join(data, "renamed"), "67592"],
+                      capture_output=True, text=True).stdout
+print(r"\begin{Verbatim}[breaklines,breakanywhere,fontsize=\footnotesize]")
+print(plan, end="")
+print(r"\end{Verbatim}")
+\end{pycode}
+Returning gets three grades from tilkry25 and the quiz from tilkry26;
+the presentation is reported, as the new room doesn't have it.
+Again gets P+ in the lab and A in the written assignment, the best of
+two passes, and in the quiz the P of tilkry25: the other one has no
+date.
+Second shares returning's lab command.
+Failed, graded and left get nothing, and graded's pass is counted as
+left alone.
+
+The output is meant for the shell, so let's give it to one.
+In place of [[canvaslms]] we define a function that prints its
+arguments, run each command line, and check the regexes as
+[[canvaslms]] would read them, with Python's [[re]]:
+the assignment's must match the name we meant and no other in the
+room, and the users' must match exactly the students who get that
+grade.
+\begin{pycode}
+import re, shlex
+checks = []
+for line in plan.splitlines():
+  if line.startswith("#"):
+    continue
+  args = subprocess.run(["bash", "-c",
+                         'canvaslms() { printf "%s\\n" "$@"; }; ' + line],
+                        capture_output=True, text=True).stdout.splitlines()
+  option = dict(zip(args[1::2], args[2::2]))
+  names = [a for a in assignments if re.search(option["-a"], a)]
+  users = sorted(s for s in students + ["left"]
+                 if re.search(option["-u"], login(s)))
+  checks.append(f"{names[0] if len(names) == 1 else names}: "
+                f"{option['-g']} for {', '.join(users)}")
+print_verbatim("\n".join(sorted(checks)))
+\end{pycode}
+
+
 \section{The HR subcommands}\label{HRSection}
 
 Students are not the only ones who write to us about records.
