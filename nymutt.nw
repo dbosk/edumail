@@ -375,9 +375,11 @@ for email in ["email6.txt", "email7.txt", "email8.txt"]:
 print_verbatim("\n".join(lines))
 \end{pycode}
 The ninth example is a cron job's output.
-Guessed from its words it would be datintro mail, on the strength of
-\enquote{ssh}; the seed's [[stream:]] rule for the cron daemon keeps
-the guess out and labels the reading as administration:
+No student wrote it, so [[edumail]] guesses only from its subject, and
+the \enquote{ssh} of its body is not read; had the job been an
+[[rsync -e ssh]], its subject would have made it datintro mail.
+The seed's [[stream:]] rule for the cron daemon keeps such guesses out
+and labels the reading as administration:
 \begin{pycode}
 output = subprocess.run(["./nymutt", "derive", "email9.txt"],
                         capture_output=True, env=demoenv)
@@ -1230,10 +1232,12 @@ stream:KTH\sSurvey                                  survey
 Notification streams from tools are labelled by the tool, since the
 tool usually implies the activity: Canvas and FeedbackFruits mean
 teaching, GitHub means development, Urkund means grading.
-They are [[stream:]] rules, so [[edumail]] does not guess at them:
-a notification quotes commit messages, assignment names and chat lines,
-and GitHub's very name contains \enquote{git}, a datintro keyword, so
-without the prefix every GitHub notification would be datintro mail.
+They are [[stream:]] rules, so [[edumail]] does not guess at them.
+It guesses only from the subject of mail that no student wrote, but a
+notification's subject is the tool's:
+it names a repository or an assignment, and a repository called
+[[git-hooks]] has \enquote{git}, a datintro keyword, in its name, so
+without the prefix its notifications would be datintro mail.
 What a notification names---a course code, an assignment group---is
 still taken literally, which is what we want from Canvas.
 <<[[labels.rules]]>>=

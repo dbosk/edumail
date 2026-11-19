@@ -956,15 +956,19 @@ A cron job fails to reach the password manager and then Canvas.
 GitHub tells us that a bot wants to update two of a project's
 dependencies.
 \inputminted[breaklines,breakanywhere,fontsize=\footnotesize,
-             highlightlines={2,22,26-27,41,55-56}]{text}{email18.txt}
+             highlightlines={2,22,27,41}]{text}{email18.txt}
 \end{example}
 \Cref{email16} got the labels [[f]] and [[v]], from the [[f90]] that
 ends a memory address and the [[v22]] of the Node.js version.
 \Cref{email18} got twelve.
 Eleven came from its commit hashes: [[9bc0665]] ends in a course code,
 [[BC0665]], and [[4adcd02]] holds a nick name, [[adcd]].
-One came from a security advisory, [[GHSA-8988-9cw3-xx77]], which ends
-in [[xx77]].
+The lookbehind above takes care of those, since in a hash a digit or a
+letter stands in front of them, as it does of the [[f90]].
+It does nothing for the [[v22]], nor for the [[xx77]] that ends a
+security advisory, [[GHSA-8988-9cw3-xx77]]:
+both stand alone, behind a space and a hyphen, and with the old pattern
+they counted as the courses [[v]] and [[xx]].
 So we only read nick names that we know, with their year.
 A nick name of someone else's course, such as [[tilda23]], no longer
 counts as named; a rules file that knows the course can still label
@@ -2839,7 +2843,7 @@ lines = []
 for name, text in [("as it stands", cron), ("rsync -e ssh", rsync)]:
     output = subprocess.run(["./edumail", "labels"], input=text.encode(),
                             capture_output=True, env=norules)
-    labels = " ".join(output.stdout.decode().split()) or "(no labels)"
+    labels = " ".join(output.stdout.decode().split()) or "(nothing)"
     lines.append(f"{name}: {labels}")
 print_verbatim("\n".join(lines))
 \end{pycode}
@@ -2863,7 +2867,9 @@ print_verbatim("\n".join(lines))
 printed.
 Now they yield nothing without rules, and with the [[stream:]] rules
 for their senders, as the seed rules in the [[nymutt]] documentation
-have them, only those rules' labels:
+have them, only those rules' labels.
+A [[stream:]] rule keeps the named courses, so before, the cron job had
+been [[admin f v]] even with its rule.
 \begin{pycode}
 rules = tempfile.NamedTemporaryFile("w", suffix=".rules", delete=False)
 rules.write("stream:Cron\\sDaemon  admin\n"
@@ -2875,8 +2881,21 @@ for email in ["email16.txt", "email18.txt"]:
                       ("stream rules", dict(norules, LABELS_RULES=rules.name))]:
         output = subprocess.run(["./edumail", "labels", email],
                                 capture_output=True, env=env)
-        labels = " ".join(output.stdout.decode().split()) or "(no labels)"
+        labels = " ".join(output.stdout.decode().split()) or "(nothing)"
         lines.append(f"{email}, {name}: {labels}")
+print_verbatim("\n".join(lines))
+\end{pycode}
+That alone would not show the patterns at work, though:
+[[known_courses]] drops whatever is not ours, so it would hide a
+pattern that let the look-alikes in again.
+So let's also see what the patterns themselves read as named courses:
+\begin{pycode}
+lines = []
+for email in ["email16.txt", "email18.txt"]:
+    output = subprocess.run(["./edumail", "named_courses", email],
+                            capture_output=True, env=norules)
+    courses = " ".join(output.stdout.decode().split()) or "(nothing)"
+    lines.append(f"{email}: {courses}")
 print_verbatim("\n".join(lines))
 \end{pycode}
 
