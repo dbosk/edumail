@@ -1783,7 +1783,10 @@ This subcommand starts from a course and not from an email, but it
 keeps the idea of the results subcommands: it prints commands for us to
 look at, and we run them.
 The commands here write grades to Canvas, which is all the more reason
-to read them first.
+to read them first---and to run them soon after:
+they are made from what the new room held when we asked, and a
+submission that is graded or handed in after that is overwritten all
+the same.
 \begin{minted}{bash}
 edumail carryover tilkry27 > carryover.sh
 less carryover.sh
@@ -1800,7 +1803,8 @@ carryover() {
     <<find the room of [[course]] and its other rounds>>
     data=$(mktemp -d)
     trap 'rm -rf "${data}"' EXIT
-    trap 'exit 130' INT TERM
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     <<fetch the room and the other rounds into [[data]]>>
     <<collect the rules into [[data]]>>
     carryover_plan "${data}" "${id}" "${code}"
@@ -1819,8 +1823,12 @@ run, not even one we interrupt:
 reading the rounds takes minutes, which is time enough to press
 Ctrl-C.
 The body runs in a subshell, whose [[EXIT]] trap removes the files
-however it ends; an interrupt only runs that trap if it ends the
-subshell, which is what the second trap sees to.
+however it ends, an interrupt included.
+An interrupt also reaches the [[canvaslms]] that is running, and bash,
+left to itself, waits to see how that ends: a program that catches the
+interrupt and exits normally lets the script go on, with half the data.
+The other two traps end the subshell instead, with the status that an
+interrupt or a termination would have given it.
 The subshell also keeps the variables to itself, and a failure can
 simply [[exit]] it.
 
@@ -1848,10 +1856,10 @@ if [[ -z "${room}" || $(wc -l <<< "${room}") -ne 1 ]]; then
   exit 1
 fi
 id=$(cut -f 1 <<< "${room}")
-name=$(cut -f 2 <<< "${room}")
-code=$(grep -oE "^${KTH_COURSE_CODE}" <<< "${name}")
+room_name=$(cut -f 2 <<< "${room}")
+code=$(grep -oE "^${KTH_COURSE_CODE}" <<< "${room_name}")
 if [[ -z "${code}" ]]; then
-  echo "${course}: no course code in ${name}" >&2
+  echo "${course}: no course code in ${room_name}" >&2
   exit 1
 fi
 @ The [[tr]] is there because [[canvaslms]] ends its lines with a
@@ -1872,7 +1880,11 @@ include.
 <<variables>>=
 TERM_OF_ROUND="[HV]T[0-9]{2}"
 <<find the room of [[course]] and its other rounds>>=
-rounds=$(canvaslms courses -a -i | tr -d '\r' \
+if ! rooms=$(canvaslms courses -a -i); then
+  echo "carryover: canvaslms courses failed" >&2
+  exit 1
+fi
+rounds=$(tr -d '\r' <<< "${rooms}" \
          | awk -F '\t' -v round="^${code} ?${TERM_OF_ROUND}" \
              -v id="${id}" '$2 ~ round && $1 != id { print $1 }')
 if [[ -z "${rounds}" ]]; then
@@ -1900,7 +1912,7 @@ carryover_fetch "${data}/submissions" \
   submissions list -c "^${id}$" -l || exit 1
 carryover_fetch "${data}/rounds" \
   submissions list -c "^($(paste -sd '|' <<< "${rounds}"))$" -l || exit 1
-echo "${name}" > "${data}/name"
+echo "${room_name}" > "${data}/room"
 @ A fetch that fails must stop us.
 Say the new room's submissions don't come: then nothing in it looks
 graded, and we would print commands that overwrite what is.
@@ -1981,6 +1993,9 @@ DD2520  ^INL1Quiz Cryptographic Concepts( v?[0-9]{4})?$
 [[Seminar.*: usability]] matches every year's seminar but not the
 \enquote{Preparation for usability seminar}, which is an assignment of
 its own.
+The seminar was called \enquote{Usability seminar} in tilkry21; in
+tilkry22 and tilkry23 that name is still there, but in a group named
+\enquote{OLD DO NOT PUBLISH}, next to the seminar of the year.
 The written assignment became \enquote{INL1Written Final} when a peer
 review was added, \enquote{INL1Written Peer Review}, which the rule
 must not match.
@@ -2022,22 +2037,27 @@ the new ones; our own rules go in a file of their own, and a file for
 one run can be given as the second argument.
 Rules are tried in that order: the argument's first, the defaults last.
 <<variables>>=
-DEFAULT_CARRYOVER_RULES="${XDG_CONFIG_HOME:-$HOME/.config}/edumail/carryover.rules"
-CARRYOVER_RULES="${CARRYOVER_RULES:-${DEFAULT_CARRYOVER_RULES}}"
-CARRYOVER_DEFAULT_RULES=$(cat <<'_EOF'
+CARRYOVER_RULES_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/edumail/carryover.rules"
+CARRYOVER_RULES="${CARRYOVER_RULES:-${CARRYOVER_RULES_PATH}}"
+CARRYOVER_BUILTIN_RULES=$(cat <<'_EOF'
 <<default carry-over rules>>
 _EOF
 )
 <<collect the rules into [[data]]>>=
 {
   cat "${rules}" || exit 1
+  echo
   if [[ -r "${CARRYOVER_RULES}" ]]; then
     cat "${CARRYOVER_RULES}"
+    echo
   fi
-  echo "${CARRYOVER_DEFAULT_RULES}"
+  echo "${CARRYOVER_BUILTIN_RULES}"
 } > "${data}/rules"
 @ The environment can point to another file of our own, as for the
 label rules (\cref{LabelRules}).
+The [[echo]] after each file is for a last line without its newline,
+which would otherwise run into the first rule of the next file and
+take it along.
 
 A rule is used like this.
 A name that the new room has, once, is the same assignment there.
@@ -2062,12 +2082,13 @@ datintro twice.
 <<functions>>=
 carryover_plan() {
   local data="$1" id="$2" code="$3"
-  awk -F '\t' -v q="'" -v id="${id}" -v code="${code}" \
-      -v message="${CARRYOVER_MESSAGE}" -v data="${data}" '
+  CARRYOVER_MESSAGE="${CARRYOVER_MESSAGE}" \
+  awk -F '\t' -v q="'" -v id="${id}" -v code="${code}" -v data="${data}" '
     <<[[awk]] functions for the carry-over>>
     BEGIN {
       <<rank the passes>>
-      getline room < (data "/name")
+      getline room < (data "/room")
+      message = ENVIRON["CARRYOVER_MESSAGE"]
     }
     { sub(/\r$/, "") }
     <<read the rules and the new room>>
@@ -2088,6 +2109,8 @@ tie on both are sorted as text.
 The message is what the students see as a comment on the grade, with
 the round's Canvas course code after it; it can be set from the
 environment, for a course given in Swedish.
+The program gets it from its environment and not with [[-v]], which
+would read a backslash in it as the start of an escape.
 
 The first rule strips the carriage return from every line.
 It matters for the last column only, which is where the date of
@@ -2173,6 +2196,12 @@ So when the new room has graded the assignment already, its grades
 tell us the kind, and a pass of another kind is reported rather than
 carried; when it hasn't, a student whose passes are of different kinds
 is reported too.
+At the start of a round, though, nothing is graded yet, and we can't
+tell the kind: [[canvaslms assignments list]] doesn't show how an
+assignment is graded.
+A pass of one kind then goes where it went before, which is right as
+long as the assignment is graded as it was; if its scale has changed,
+it is the commands for it that we must read with care.
 
 \subsubsection{The best pass}
 
@@ -2233,13 +2262,17 @@ function once(old, a) {
 one run to the next; [[for (a in copies)]] goes through them in no
 order that [[awk]] promises.
 <<[[awk]] functions for the carry-over>>=
-function listed(names, n,   i, j, t, s) {
-  for (i = 2; i <= n; i++)
-    for (j = i; j > 1 && names[j - 1] > names[j]; j--) {
-      t = names[j]; names[j] = names[j - 1]; names[j - 1] = t
-    }
+function listed(names, n,   i, s) {
+  sorted(names, n)
   for (i = 1; i <= n; i++) s = s (i > 1 ? ", " : "") shown(names[i])
   return s
+}
+function sorted(a, n,   i, j, t) {
+  for (i = 2; i <= n; i++)
+    for (j = i; j > 1 && a[j - 1] > a[j]; j--) {
+      t = a[j]; a[j] = a[j - 1]; a[j - 1] = t
+    }
+  return n
 }
 @
 
@@ -2263,21 +2296,30 @@ for (key in best) {
     continue
   }
   cmd = part[1] SUBSEP best[key] SUBSEP from[key]
-  users[cmd] = (cmd in users ? users[cmd] "|" : "") regex(part[2])
+  if (cmd in users) users[cmd] = users[cmd] SUBSEP part[2]
+  else users[cmd] = part[2]
 }
 @ The students who get the same grade from the same round in the same
 assignment can share a command, since [[canvaslms grade]] grades every
 student its [[-u]] regex matches.
 That makes far fewer calls to Canvas than one per student and
 assignment.
-The students of a command come in no particular order, which the regex
-doesn't mind.
+We sort the students of a command, so that the output is the same from
+one run to the next; the regex wouldn't mind.
+The [[if]] could have been a conditional expression, but not every
+[[awk]] evaluates [[cmd in users]] before the assignment creates the
+element it tests for: mawk and busybox's [[awk]] don't, and the regex
+would start with an empty alternative, which matches every student
+without a login ID.
 <<print the commands that carry the grades over>>=
 for (cmd in users) {
   split(cmd, part, SUBSEP)
+  n = sorted(who, split(users[cmd], who, SUBSEP))
+  logins = regex(who[1])
+  for (i = 2; i <= n; i++) logins = logins "|" regex(who[i])
   printf "1\t0\tcanvaslms grade -c %s -a %s -g %s -m %s -u %s\n",
     quote("^" id "$"), quote("^" regex(part[1]) "$"), quote(part[2]),
-    quote(message " " part[3] "."), quote("^(" users[cmd] ")$")
+    quote(message " " part[3] "."), quote("^(" logins ")$")
 }
 @ The names in the commands are regexes, and they are read by the shell
 first.
@@ -2398,9 +2440,9 @@ rounds = [
   (r25, "INL1Quiz Ciphers",     "again",     "P",  "2025-02-01 11:00"),
   (r26, "INL1Quiz Ciphers",     "again",     "P",  "N/A"),
   (r25, "Optional: Side channels (C, B, A)",
-                                "again",     "2.5", "2025-03-10 10:00"),
+                                "again",     "10", "2025-03-10 10:00"),
   (r26, "Optional: Side channels (C, B, A)",
-                                "again",     "1.75", "2026-03-10 10:00"),
+                                "again",     "9.5", "2026-03-10 10:00"),
   (r25, "LAB1 Implement AES",   "second",    "P",  "2025-02-04 10:00"),
   (r26, "LAB1 Implement AES",   "weak",      "E",  "2026-02-02 10:00"),
   (r26, "LAB1 Implement AES",   "failed",    "F",  "2026-02-02 10:00"),
@@ -2433,7 +2475,8 @@ print_verbatim("\n".join("\t".join([r[13:-1], a, s, g, d])
   and one that it doesn't have.
 \item[again] passed the lab twice (P+, then P), the written assignment
   twice (A, then B), the quiz twice, the second time without a date, and
-  the optional lab twice (2.5 points, then 1.75).
+  the optional lab twice (10 points, then 9.5, which comes first as
+  text).
 \item[second] passed the lab in tilkry25, like returning.
 \item[weak] passed the lab with an E.
 \item[failed] failed the lab and got no points in the quiz.
@@ -2465,7 +2508,7 @@ write("submissions", ([room, a, login(s), g, h, d]
                       for a, s, g, h, d in in_room))
 write("rounds", ([r, a, login(s), g, "2025-01-01 10:00", d]
                  for r, a, s, g, d in rounds), end="\r\n")
-write("name", [ [room] ])
+write("room", [ [room] ])
 with open(os.path.join(data, "rules"), "w") as file:
   file.write(rules)
 plan = subprocess.run(["./edumail", "carryover_plan", data, "67592",
@@ -2475,9 +2518,9 @@ print(plan, end="")
 print(r"\end{Verbatim}")
 \end{pycode}
 Each student gets what the rules above say:
-returning gets six grades from tilkry25, the usability seminar through
+returning gets five grades from tilkry25, the usability seminar through
 the second rule, and three of the passes are reported;
-again gets P+, A, the dated P and 2.5 points;
+again gets P+, A, the dated P and 10 points;
 second shares returning's lab command and weak gets an E.
 The F of failed, the zero points, graded's F and submitted's new hand-in
 stay, the latter two counted as left alone; lettered's B and mixed's
@@ -2503,15 +2546,121 @@ for line in plan.splitlines():
                         capture_output=True, text=True).stdout.splitlines()
   option = dict(zip(args[1::2], args[2::2]))
   names = [a for a in assignments if re.search(option["-a"], a)]
-  users = sorted(u.split("@")[0] if u.endswith("@kth.se") else u
-                 for u in logins + [login("left")]
+  users = sorted((u.split("@")[0] if u.endswith("@kth.se") else u)
+                 or "(no login ID)"
+                 for u in logins + [login("left"), ""]
                  if re.search(option["-u"], u, re.IGNORECASE))
   checks.append(f"{names}: {option['-g']} for {', '.join(users)}")
 print_verbatim("\n".join(sorted(checks)))
 \end{pycode}
 We match the users without regard to case, since that is how
-[[canvaslms]] matches them.
+[[canvaslms]] matches them, and we count among them one without a login
+ID, whom [[canvaslms]] matches as an empty string.
 
+The script runs whichever [[awk]] the system has, so the decisions must
+not depend on which one that is.
+Where mawk is installed, we run the plan with it too:
+\begin{pycode}
+import shutil
+mawk = shutil.which("mawk")
+if mawk:
+  bin = tempfile.mkdtemp()
+  os.symlink(mawk, os.path.join(bin, "awk"))
+  env = dict(os.environ, PATH=bin + os.pathsep + os.environ["PATH"])
+  other = subprocess.run(["./edumail", "carryover_plan", data, "67592",
+                          "DD2520"], capture_output=True, text=True,
+                         env=env).stdout
+  same = sorted(other.splitlines()) == sorted(plan.splitlines())
+  print_verbatim("mawk: " + ("the same plan" if same else "a different plan"))
+else:
+  print_verbatim("mawk: not installed")
+\end{pycode}
+
+
+\subsubsection{The subcommand as a whole}
+
+What [[carryover]] adds to the plan is talk with Canvas: which rooms it
+asks for, which rules it collects, and what it does when Canvas fails
+it.
+Canvas is no place to try that, so here a script stands in for
+[[canvaslms]].
+It prints the files we wrote above, as [[canvaslms]] would have printed
+them, and notes how it was called; the list of rooms holds the three
+rounds of tilkry, an exam room of tilkry's and a round of another
+course.
+\begin{pycode}
+stub = tempfile.mkdtemp()
+with open(os.path.join(stub, "courses"), "w", newline="") as file:
+  for cid, code in [("52629", r25), ("59543", r26), ("67592", room),
+                    ("70001", "DD2520 INL1 [2026-03-02] Examination"),
+                    ("56121", "DD1310 HT25 (CELTE)")]:
+    file.write(f"{cid}\t{code}\t{code}\t\t\r\n")
+with open(os.path.join(stub, "canvaslms"), "w") as file:
+  file.write(f"""#!/bin/bash
+echo "canvaslms $*" >> {stub}/calls
+case "$1 $2 $#" in
+  "courses -a 4") grep -F tilkry27 {stub}/courses ;;
+  "courses -a 3") cat {stub}/courses ;;
+  "users -sc"*) cat {data}/users ;;
+  "assignments list"*) cat {data}/assignments ;;
+  "submissions list"*)
+    if [ "$4" != '^67592$' ]; then cat {data}/rounds
+    elif [ -n "$FAIL" ]; then exit 1
+    else cat {data}/submissions; fi ;;
+esac
+""")
+os.chmod(os.path.join(stub, "canvaslms"), 0o755)
+def carryover(*args, **env):
+  tmp = tempfile.mkdtemp()
+  result = subprocess.run(["./edumail", "carryover", "tilkry27", *args],
+                          capture_output=True, text=True,
+                          env=dict(os.environ, XDG_CONFIG_HOME="/nonexistent",
+                                   TMPDIR=tmp,
+                                   PATH=stub + os.pathsep + os.environ["PATH"],
+                                   **env))
+  return result, os.listdir(tmp)
+result, left = carryover()
+print_verbatim(open(os.path.join(stub, "calls")).read())
+\end{pycode}
+The rounds it asks for are tilkry25 and tilkry26, by their IDs: not the
+new room, not the exam room, and not the other course.
+
+The rules come from three places, which we try in turn.
+We give the old written assignment, which the built-in rules make
+\enquote{INL1Written Final}, a rule of our own that sends it to the
+peer review, and a rule for this run that sends it to the seminar's
+neighbour without parentheses; neither file ends its last line with a
+newline.
+\begin{pycode}
+def rule_file(text):
+  name = os.path.join(stub, f"rules{len(text)}")
+  with open(name, "w") as file:
+    file.write(text)
+  return name
+mine = rule_file("# my rules\nDD2520  ^INL1Written$|Peer Review")
+once = rule_file("DD2520  ^INL1Written$|^Seminar Bob")
+lines = []
+for setup, args, env in [("built-in only", [], {}),
+                         ("our own file", [], {"CARRYOVER_RULES": mine}),
+                         ("and this run's", [once],
+                          {"CARRYOVER_RULES": mine})]:
+  result, left = carryover(*args, **env)
+  target = [re.sub(r"\\(.)", r"\1", re.search(r"-a '\^(.*)\$' -g 'B'",
+                                             line).group(1)
+                  .replace("'\\''", "'"))
+            for line in result.stdout.splitlines()
+            if "returning@kth" in line and "-g 'B'" in line]
+  lines.append(f"{setup}: {target}")
+print_verbatim("\n".join(lines))
+\end{pycode}
+And when the new room's submissions don't come, nothing is printed, the
+status says so, and nothing is left behind:
+\begin{pycode}
+result, left = carryover(FAIL="1")
+print_verbatim(f"status {result.returncode}, "
+               f"{len(result.stdout)} characters printed, "
+               f"{len(left)} files left\n{result.stderr.strip()}")
+\end{pycode}
 
 \subsection{The default rules on real names}
 
@@ -2529,7 +2678,7 @@ what the rules map to what, and any name that a rule finds several or
 duplicated places for; names that land nowhere are left out.
 \begin{pycode}
 import os, re, subprocess, tempfile, collections
-rules = subprocess.run(["bash", "-c", 'source ./edumail; echo "$CARRYOVER_DEFAULT_RULES"'],
+rules = subprocess.run(["bash", "-c", 'source ./edumail; echo "$CARRYOVER_BUILTIN_RULES"'],
                        capture_output=True, text=True).stdout
 rooms = collections.defaultdict(lambda: collections.defaultdict(list))
 for line in open("carryover-names.tsv"):
@@ -2557,7 +2706,7 @@ for code in sorted(rooms):
     write("rounds", "".join(f"{room}\t{a}\ts{i}\tP\tN/A\t2025-01-01 10:00\n"
                             for i, a in enumerate(old)))
     write("rules", rules)
-    write("name", latest + "\n")
+    write("room", latest + "\n")
     plan = subprocess.run(["./edumail", "carryover_plan", data, "1", code],
                           capture_output=True, text=True).stdout
     for line in plan.splitlines():
