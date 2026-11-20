@@ -1790,6 +1790,538 @@ print_verbatim(str(output.stdout, "utf-8"))
 \end{pycode}
 
 
+\section{Carrying results over from earlier rounds}\label{CarryoverSection}
+
+Every round of a course has some students who took it before.
+They only do the assignments they haven't passed, and their earlier
+results stay in the Canvas room of the round they took.
+The commands of the results subcommands read one room
+(\cref{GradingSchemes}): in the new one, [[--missing]] lists what such a
+student passed a year ago, and the report never sees the module
+complete.
+So we copy the passed results into the new room.
+
+The copying is planned by [[carryover.sh]], which comes with
+[[canvaslms]].
+Given a round, it finds the course's other rounds in Canvas, works out
+which passes to carry over, and prints the [[canvaslms grade]] commands
+that would copy them; it writes nothing itself.
+It serves any course, and its own documentation says how it decides.
+At the start of a round, we run it for the whole round:
+\begin{minted}{bash}
+carryover.sh prgi26 > carryover-commands.sh
+less carryover-commands.sh
+bash carryover-commands.sh
+\end{minted}
+
+Two things it can't know, and they are what this section adds.
+The first is the email.
+A student who writes after the start that they passed a lab last year
+needs the commands for themselves only, which is what the script's
+[[-u]] option is for; [[edumail carryover]] fills it in from the email,
+together with the round (\cref{CarryoverCommand}).
+The second is how our courses renamed their assignments from one round
+to the next.
+The script reads that from rules that the course's teachers write, and
+ours are in \cref{CarryoverRules}.
+
+
+\subsection{The command for the student who wrote}\label{CarryoverCommand}
+
+In the reply to the student, in Vim, we run
+\begin{quote}
+  [[.!edumail carryover %]]
+\end{quote}
+on a blank line, as for the results subcommands (\cref{email1}).
+For \cref{email2} that gives\footnote{%
+  Here and below, the rounds are those of a made-up register, and the
+  script is named, not looked for (\cref{CarryoverEmails}).%
+}
+\begin{pycode}
+import os, re, subprocess, tempfile
+stand_in = tempfile.mkdtemp()
+def stand_in_program(name, body):
+  with open(os.path.join(stand_in, name), "w") as file:
+    file.write("#!/bin/bash\n" + body)
+  os.chmod(os.path.join(stand_in, name), 0o755)
+stand_in_program("nytid", 'printf "ours\\tprgi26\\nours\\tdatintro26\\n"\n')
+stand_in_program("carryover.sh", 'printf "%s\\n" "$@"\n')
+stand_in_env = dict(os.environ, CARRYOVER_SH="carryover.sh",
+                    PATH=stand_in + os.pathsep + os.environ["PATH"])
+def carryover_lines(email):
+  return subprocess.run(["./edumail", "carryover", email],
+                        capture_output=True, text=True,
+                        env=stand_in_env).stdout
+def run_lines(email):
+  args = subprocess.run(["bash", "-c", carryover_lines(email)],
+                        capture_output=True, text=True,
+                        env=stand_in_env).stdout.splitlines()
+  return [args[i:i + 3] for i in range(0, len(args), 3)]
+print_verbatim(carryover_lines("email2.txt"))
+\end{pycode}
+Running those lines, [['<,'>!bash]], replaces them with the
+[[canvaslms grade]] commands, and with comments on what can't be
+carried over; we read them, and then run them in turn.
+Like the results subcommands, we print the student as a variable, so
+that a wrong guess is corrected in one place.
+Running the script takes minutes, not seconds, even for one student:
+[[canvaslms]] fetches each assignment's submissions in full before it
+picks out the student's.
+<<functions>>=
+carryover() {
+  local file=$(file_or_stdin "$1")
+  local script students courses rounds round
+  <<find the [[script]], or say that it is missing>>
+  students=$(student "$file")
+  <<say if the email gives several addresses>>
+  echo "STUDENT=$(student_regex <<< "${students}" | shell_quote)"
+  courses=$(course_candidates_regex "$file")
+  rounds=$(current_rounds "${courses}")
+  if [[ -z "${rounds}" ]]; then
+    <<say that we give no round of the course now>>
+  fi
+  for round in ${rounds}; do
+    printf '%q -u "${STUDENT:?}" %q\n' "${script}" "${round}"
+  done
+}
+@ The [[%q]] quotes the path and the round for the shell, should they
+hold a space.
+The [[:?]] is for the student filter.
+Without [[-u]], or with an empty one, the script plans for every
+student of the round, and that is not what we asked for when we answer
+one of them.
+So if we select only the lines below the [[STUDENT]] line, or the
+[[STUDENT]] line came out empty, the shell stops before it runs the
+script (\cref{CarryoverEmails}).
+
+The round to carry into is the one the student takes now.
+The email may well name an earlier round---\enquote{I took prgi23}---but
+that is where the results come from, and the script finds those rounds
+itself.
+So, as for the HR subcommands (\cref{HRSection}), we take the rounds of
+our register, [[nytid]]'s, that the email's course candidates match.
+When the email gives no hint of the course, there are no candidates and
+the empty regex matches every round we give:
+\cref{email6} gets one line per round.
+We delete the lines of the wrong rounds rather than guess, since a run
+costs minutes and it is the student's results we copy.
+
+A course that we don't give now has no round to carry into yet:
+the tilkry student of \cref{email14} wrote in the autumn, and tilkry
+runs in the spring.
+We say so, and print a line that we can complete with the round:
+\begin{pycode}
+print_verbatim(carryover_lines("email14.txt"))
+\end{pycode}
+<<say that we give no round of the course now>>=
+echo "# nytid gives no round of ${courses:-any course} now;" \
+     "replace ROUND"
+rounds=ROUND
+@ We say \enquote{nytid gives} rather than \enquote{we give}: a
+[[nytid]] that is missing or fails gives no rounds either.
+
+The student filter matches more than one would think.
+[[canvaslms]] matches it case-insensitively against each student's name
+and login ID, but anywhere in them, and as a regex:
+[[studenten@kth.se]] also matches [[xstudenten@kth.se]], and the dot
+matches any character.
+The commands write grades, so we want exactly the student who wrote.
+We escape what a regex would read as an operator, and anchor the
+identifier at both ends.
+[[student]] can find several addresses, one per line, and we keep them
+all as a disjunction.
+But one of them may be someone else's---\cref{email8} quotes a message
+with its own [[To:]] line---so we say so, and leave the choice to us.
+<<say if the email gives several addresses>>=
+if [[ "${students}" == *$'\n'* ]]; then
+  echo "# several addresses in the email: keep only the student's"
+fi
+@
+<<functions>>=
+student_regex() {
+  sed 's/[][\.*^$()+?{}|]/\\&/g' | make_disjunct_regex | sed 's/^/^/; s/$/$/'
+}
+@ The name of \cref{email1} becomes
+\begin{pycode}
+print_verbatim(carryover_lines("email1.txt").splitlines()[0])
+\end{pycode}
+with parentheses that do no harm.
+
+The name is the sender's text, and the line will be run by our shell.
+In double quotes, a [[\"]] in the name would end the value early, and a
+backquote would run a command; a [[$]] or a backslash would come out
+changed.
+In single quotes everything stays as it is, except a single quote
+itself, which we end the quotes for, escape, and open them again:
+[[O'Hara]] becomes [['O'\''Hara']].
+<<functions>>=
+shell_quote() {
+  sed "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/"
+}
+@ The test in \cref{CarryoverEmails} tries this on such names.
+
+\paragraph{Finding the script}
+[[carryover.sh]] is installed with the Python code of [[canvaslms]],
+not where commands are looked for.
+Its place is next to the [[canvaslms]] module, so we ask the Python
+that runs [[canvaslms]], the interpreter on the first line of the
+[[canvaslms]] command; the system's [[python3]] is our second guess,
+for an installation without a virtual environment.
+A copy on our [[PATH]] comes first, and [[CARRYOVER_SH]] before that,
+for a copy of the script that is not installed---one that we are
+working on, say.
+<<functions>>=
+carryover_script() {
+  local canvaslms python script
+  if [[ -n "${CARRYOVER_SH}" ]]; then
+    echo "${CARRYOVER_SH}"
+    return 0
+  fi
+  command -v carryover.sh && return 0
+  canvaslms=$(command -v canvaslms) || return 1
+  for python in "$(sed -n '1s/^#! *//p' "${canvaslms}")" python3; do
+    script=$(${python} -c "${CARRYOVER_SCRIPT_PATH}" 2>/dev/null)
+    if [[ -x "${script}" ]]; then
+      echo "${script}"
+      return 0
+    fi
+  done
+  return 1
+}
+<<variables>>=
+CARRYOVER_SCRIPT_PATH='import canvaslms, pathlib
+print(pathlib.Path(canvaslms.__file__).parent / "scripts" / "carryover.sh")'
+@ The interpreter is left unquoted, so that a first line like
+[[/usr/bin/env python3]] runs [[python3]].
+This asks Python only when we run [[edumail carryover]], not in the
+[[<<variables>>]], which every subcommand runs.
+
+Without the script, we still print the lines, with its name, and say
+what is missing:
+<<find the [[script]], or say that it is missing>>=
+if ! script=$(carryover_script); then
+  script=carryover.sh
+  echo "# carryover.sh not found: it comes with canvaslms;" \
+       "or set CARRYOVER_SH to it"
+fi
+@
+
+
+\subsection{Rules for our courses}\label{CarryoverRules}
+
+An assignment is the same in two rounds when it has the same name.
+Often it hasn't:
+of the 48 assignments of tilkry26, 30 have a name from tilkry25.
+Some are new, but many were only renamed, and how varies with the
+course:
+\begin{description}
+\item[tilkry] puts the date and the teachers of a seminar in its name,
+  and the word for mandatory comes and goes:
+  \enquote{LIVE (MANDATORY) Seminar 4/2: usability (\ldots)} one year,
+  \enquote{MANDATORY Seminar (31/1): usability (\ldots) ON CAMPUS}
+  another.
+\item[prgi] added \enquote{(obligatorisk)} to every mandatory assignment
+  in prgi26, and \enquote{(kamratgranskning)} to some labs the year
+  before.
+\item[vetcyb] dates its final seminar:
+  \enquote{The final seminar on 27/5 at 14:15}.
+\item[progd] marked its labs \enquote{\texttt{<{}<{}<} The Lab To Do} one
+  year.
+\end{description}
+datintro and prgm have kept their names.
+What stays is a core---\enquote{: usability}, \enquote{Excel labb 2},
+\enquote{The final seminar on}---and a regex can say what that core
+is.
+So [[carryover.sh]] takes rules: a course code and a regex, separated by
+spaces or tabs, and every name that the regex matches is the same
+assignment.
+It tries a course's rules in order, and a rule decides when its regex
+matches the old name and some name in the new room: if one, that is the
+assignment; if several, it reports them and carries nothing.
+A rule that matches no name in the new room decides nothing, and the
+next is tried.
+<<[[carryover.rules]]>>=
+DD2520  ^((Mandatory|MANDATORY):? )?Cryptanalysis of Ciphertexts$
+DD2520  ^((Mandatory|MANDATORY):? )?Implement AES \(Kattis Problem\)$
+DD2520  ^(Mandatory: )?AES presentation$
+DD2520  ^(MANDATORY )?Design Considerations( \(after .*\))?$
+DD2520  Lab.*: Introduction to ProVerif|^Introduction to ProVerif$
+DD2520  Seminar.*: usability|^Usability seminar$
+DD2520  Seminar.*: Impact considerations around crypto systems
+DD2520  ^(MANDATORY )?Preparation for usability seminar$
+DD2520  ^(MANDATORY )?Preparation for impact considerations seminar$
+DD2520  ^Optional: AES presentation
+DD2520  ^Optional: Cryptopals
+DD2520  ^Optional: Essay
+DD2520  ^Optional: Secure multi-party computation
+DD2520  ^Optional: Side channels
+DD2520  ^INL1Written( Final| [0-9/-]+)?$
+DD2520  ^INL1Quiz Cryptographic Concepts( v?[0-9]{4})?$
+@ The seminars show why a rule names the core and not the variation:
+[[Seminar.*: usability]] matches every year's seminar but not the
+\enquote{Preparation for usability seminar}, which is an assignment of
+its own.
+The seminar was called \enquote{Usability seminar} in tilkry21; in
+tilkry22 and tilkry23 that name is still there, but in a group named
+\enquote{OLD DO NOT PUBLISH}, next to the seminar of the year.
+The written assignment became \enquote{INL1Written Final} when a peer
+review was added, \enquote{INL1Written Peer Review}, which the rule
+must not match.
+The quiz on cryptographic concepts was split into seven quizzes, one
+per topic, in tilkry26; no rule can make one of seven the same, so its
+rule only joins its yearly versions.
+<<[[carryover.rules]]>>=
+DD1317  ^Laboration \(3\) upprepningar, listor och moduler( \(obligatorisk\))?$
+DD1317  ^Laboration \(4\) klasser och objekt( \(kamratgranskning\))?( \(obligatorisk\))?$
+DD1317  ^Laboration \(5\) behållare och klasser( \(kamratgranskning\))?( \(obligatorisk\))?$
+DD1317  ^Laboration \(6\) filhantering( \(obligatorisk\))?$
+DD1317  ^Excel labb 1( \(obligatorisk\))?$
+DD1317  ^Excel labb 2( \(obligatorisk\))?$
+DD1317  ^Excel labb 3( \(obligatorisk\))?$
+DD1317  ^Excel labb 4( \(obligatorisk\))?$
+DD1317  ^Projektspecifikation( \(obligatorisk\))?$
+DD1317  ^Projektgranskning( \(obligatorisk\))?$
+DD1317  ^Projektredovisning( \(obligatorisk\))?$
+DD1317  ^Välj p-uppgift( \(obligatorisk\))?$
+DD1317  ^(Betyg datorprovet|Datorprov)( \(obligatorisk\))?$
+@ A rule can't say \enquote{the same name with \enquote{(obligatorisk)}
+after it} once for all labs, since a regex can't refer to the other
+name; so each lab has a rule.
+Laboration~(1) and~(2) need none: their old names are still in prgi26,
+among the imported assignments.
+<<[[carryover.rules]]>>=
+DD1337  ^Git$|^Managing work with Git/GitHub @<<< The Lab To Do$
+DD1337  ^The terminal$|^Working in the terminal @<<< The Lab To Do$
+DD1337  ^Writing a report in LaTeX( @<<< The Lab To Do)?$
+DA2215  ^The final seminar on
+DA2215  ^Active participation in the final seminar
+DA2215  ^(Final version of the r|R)eport for final seminar$
+DA2215  ^Course evaluation survey( \(project\))?$
+@ vetcyb's other seminars are dated too, \enquote{Live seminar 15/4 at
+15:15}, but each date is a seminar of its own, so they get no rule.
+
+The rules go where [[carryover.sh]] looks for our own,
+[[~/.config/canvaslms/carryover.rules]], and [[make install]] puts them
+there---but only if the file isn't there, as for the label rules
+(\cref{LabelRules}):
+once installed, the file is ours, and our own changes must not be
+overwritten.
+New rules from here therefore don't reach an installed file by
+themselves;
+[[diff carryover.rules ~/.config/canvaslms/carryover.rules]] shows them.
+We could instead give our rules with [[-r]] in every line we print, and
+they would always be the latest.
+But the run for a whole round, which we start by hand, would miss them;
+and the script reads a file given with [[-r]] before our own, so a rule
+we add there could never override one of these.
+
+
+\subsection{Testing on the emails}\label{CarryoverEmails}
+
+The lines depend on two things outside the email: the rounds we give
+now and where the script is.
+Both change, so the tests fix them:
+a stand-in [[nytid]] prints a register of prgi26 and datintro26, and
+[[CARRYOVER_SH]] names the script.
+(The examples above already ran with them; the stand-ins are set up
+with the first, in \cref{CarryoverCommand}.)
+A stand-in for the script prints the options it gets, so that running
+the lines shows what the script would get from them:
+the student filter, which we try on the logins as [[canvaslms]] would,
+with Python's [[re.search]], ignoring case.
+\begin{pycode}
+lines = []
+for email, logins in [("email2.txt", ["studenten@kth.se",
+                                      "xstudenten@kth.se",
+                                      "studenten@kth.sex",
+                                      "studenten@kthxse"]),
+                      ("email6.txt", ["t@eecs.kth.se", "at@eecs.kth.se"])]:
+  for option, student, round in run_lines(email):
+    assert option == "-u"
+    matched = [l for l in logins if re.search(student, l, re.IGNORECASE)]
+    lines.append(f"{email}: {round}, -u {student} matches {matched}")
+print_verbatim("\n".join(lines))
+\end{pycode}
+Only the address that the student wrote from matches, not one that
+holds it or one with another character for the dot.
+\Cref{email6} gives no hint of the course, so it gets a line for each
+round in the register.
+
+The student's name comes from the email, and the sender writes it.
+Names that a shell or a regex would read as more than a name must still
+reach the script as they are, and match only themselves.
+We give each to [[edumail]] in a made-up email, run the lines in a
+directory of their own and check what the script got:
+\begin{pycode}
+hostile = ['"Last, First"', "Ann O'Hara", "Eve `touch PWNED` X",
+           "dollar$x back\\slash", "a.b|c (d) [e] *+?{}^"]
+lines = []
+for name in hostile:
+  email = f"To: {name} <someone@example.org>\nSubject: lab\n\n"
+  output = subprocess.run(["./edumail", "carryover"], input=email,
+                          capture_output=True, text=True,
+                          env=stand_in_env).stdout
+  directory = tempfile.mkdtemp()
+  args = subprocess.run(["bash", "-c", output], cwd=directory,
+                        capture_output=True, text=True,
+                        env=stand_in_env).stdout.splitlines()
+  student = args[1]
+  exact = bool(re.search(student, name, re.IGNORECASE))
+  others = [n for n in [name + "x", "x" + name, name.replace(" ", "  ")]
+            if re.search(student, n, re.IGNORECASE)]
+  lines.append(f"{name}: matches itself {exact}, others {others}, "
+               f"files made {os.listdir(directory)}")
+print_verbatim("\n".join(lines))
+\end{pycode}
+Without the [[STUDENT]] line---we selected only the lines below it---or
+with an empty one, the shell stops before the script runs:
+\begin{pycode}
+output = carryover_lines("email2.txt")
+for lines in [output.split("\n", 1)[1], 'STUDENT=""\n' + output.split("\n", 1)[1]]:
+  result = subprocess.run(["bash", "-c", lines], capture_output=True,
+                          text=True, env=stand_in_env)
+  print_verbatim(f"status {result.returncode}, script got {result.stdout.split()}")
+\end{pycode}
+\Cref{email8} has two addresses, its sender's and one in a quoted
+message, and we are told to choose:
+\begin{pycode}
+print_verbatim("\n".join(carryover_lines("email8.txt").split("\n")[:2]))
+\end{pycode}
+
+The script is found from the first line of [[canvaslms]].
+Here a stand-in [[canvaslms]] names a stand-in Python, which prints
+where the script is.
+Then another names a Python that prints a place where there is no
+script, as an installed [[canvaslms]] without the script does.
+Then there is no [[canvaslms]], and then a script on the [[PATH]].
+The system's own [[python3]] is replaced by one that prints a place
+without a script, so that what is installed on the system doesn't
+matter.
+\begin{pycode}
+def directory_with(name, text):
+  directory = tempfile.mkdtemp()
+  with open(os.path.join(directory, name), "w") as file:
+    file.write(text)
+  os.chmod(os.path.join(directory, name), 0o755)
+  return directory
+python = os.path.join(directory_with("python",
+                        f"#!/bin/bash\necho {stand_in}/carryover.sh\n"),
+                      "python")
+nowhere = directory_with("python3", "#!/bin/bash\necho /nonexistent\n")
+def canvaslms_running(interpreter):
+  return directory_with("canvaslms", f"#!{interpreter}\n")
+on_path = directory_with("carryover.sh", "#!/bin/bash\n")
+system = nowhere + os.pathsep + "/usr/bin:/bin"
+lines = []
+for path, email in [(canvaslms_running(python) + os.pathsep + system, None),
+                    (canvaslms_running(nowhere + "/python3")
+                     + os.pathsep + system, None),
+                    (system, None),
+                    (on_path + os.pathsep + system, None),
+                    (system, "email2.txt"), (system, "email6.txt")]:
+  env = {k: v for k, v in os.environ.items() if k != "CARRYOVER_SH"}
+  env["PATH"] = path
+  args = ["carryover", email] if email else ["carryover_script"]
+  result = subprocess.run(["./edumail", *args], env=env,
+                          capture_output=True, text=True)
+  lines.append(f"$ edumail {' '.join(args)}  # status {result.returncode}")
+  lines.append(result.stdout.replace(stand_in, "STAND_IN")
+                .replace(on_path, "ON_PATH").rstrip())
+print_verbatim("\n".join(lines))
+\end{pycode}
+Without the script we still get the lines, with its name.
+(That [[PATH]] has no [[nytid]] either, hence no round; and
+\cref{email6} names no course.)
+
+
+\subsection{The default rules on real names}
+
+Whether the rules do what they should, only names that Canvas really
+has can tell.
+We recorded them once, from every round of the four courses that have
+rules, into [[carryover-names.tsv]]: the course code, the room and the
+name of each assignment that some rule matches---the only names that a
+rule can map from or to.
+The teachers' names in tilkry's seminars are replaced by role nouns.
+
+For each course we carry every older room into the latest, as if each
+of its assignments had been passed by a student of its own, and list
+what the rules map to what, and any name that a rule finds several or
+duplicated places for; names that land nowhere are left out.
+The deciding is [[carryover.sh]]'s, and the script lets us call it
+without Canvas:
+sourced, it only defines its functions, and [[carryover_plan]] decides
+from files that we write in its directory, as [[canvaslms]] would have
+printed them.
+So this test needs the script, and the build fails without it; with a
+[[canvaslms]] that doesn't ship it yet, [[CARRYOVER_SH]] can name a copy.
+\begin{pycode}
+import os, re, subprocess, tempfile, collections
+script = subprocess.run(["./edumail", "carryover_script"],
+                        capture_output=True, text=True).stdout.strip()
+assert script, "carryover.sh not found: set CARRYOVER_SH to check the rules"
+rules = open("carryover.rules").read()
+rooms = collections.defaultdict(lambda: collections.defaultdict(list))
+for line in open("carryover-names.tsv"):
+  code, room, name = line.rstrip("\n").split("\t")
+  rooms[code][room].append(name)
+def term(room):
+  t = re.search(r"([HV])T([0-9]{2})", room)
+  return (int(t.group(2)), t.group(1) == "H")
+def plan(data, code):
+  result = subprocess.run(["bash", "-c",
+                           'source "$1" && shift && carryover_plan "$@"',
+                           "bash", script, data, "1", code],
+                          capture_output=True, text=True)
+  assert result.returncode == 0, result.stderr
+  return result.stdout
+lines = []
+for code in sorted(rooms):
+  latest = max(rooms[code], key=term)
+  renamed, trouble = set(), set()
+  for room in rooms[code]:
+    if room == latest:
+      continue
+    old = sorted(set(rooms[code][room]))
+    data = tempfile.mkdtemp()
+    def write(name, text):
+      with open(os.path.join(data, name), "w") as file:
+        file.write(text)
+    write("users", "".join(f"{room}\ts{i}\ts{i}\n" for i in range(len(old))))
+    write("assignments", "".join(f"{latest}\tG\t{a}\t\t\t\n"
+                                 for a in rooms[code][latest]))
+    write("submissions", "")
+    write("rounds", "".join(f"{room}\t{a}\ts{i}\tP\tN/A\t2025-01-01 10:00\n"
+                            for i, a in enumerate(old)))
+    write("rules", rules)
+    write("room", latest + "\n")
+    for line in plan(data, code).splitlines():
+      if line.startswith("#"):
+        if "does not have" not in line:
+          trouble.add(re.sub(r"^# [0-9]+ ", "", line))
+        continue
+      args = subprocess.run(["bash", "-c",
+                             'canvaslms() { printf "%s\\n" "$@"; }; ' + line],
+                            capture_output=True, text=True).stdout.splitlines()
+      option = dict(zip(args[1::2], args[2::2]))
+      new = [a for a in rooms[code][latest] if re.search(option["-a"], a)]
+      for i, a in enumerate(old):
+        if re.search(option["-u"], f"s{i}") and a not in new:
+          renamed.add((a, new[0]))
+  lines.append(f"{code}, into {latest}:")
+  lines += [f"  {a}\n    -> {b}" for a, b in sorted(renamed)]
+  lines += [f"  ! {t}" for t in sorted(trouble)]
+print(r"\begin{Verbatim}[breaklines,breakanywhere,fontsize=\footnotesize]")
+print("\n".join(lines))
+print(r"\end{Verbatim}")
+\end{pycode}
+Every name lands where it should, and none in two places.
+A name that has no successor stays where it is: tilkry26 has no
+\enquote{Design Considerations}, and nothing of the old quiz on
+cryptographic concepts.
+When a course is renamed again, this is where to look first.
+
+
 \section{The HR subcommands}\label{HRSection}
 
 Students are not the only ones who write to us about records.
@@ -2043,8 +2575,7 @@ hr_courses() {
   local regex=$(draft_course_regex "$file")
   [[ -n "${regex}" ]] || regex=$(course_candidates_regex "$file")
   [[ -n "${regex}" ]] || return 1
-  local current=$(nytid courses ls 2>/dev/null | cut -f 2 \
-                  | grep -E "${regex}" | sort)
+  local current=$(current_rounds "${regex}")
   if [[ -n "${current}" ]]; then
     make_disjunct_regex <<< "${current}"
   else
@@ -2057,9 +2588,17 @@ echo "COURSE=\"$(hr_courses $file)\""
 we guess the round of this year:
 a draft for a round that is over is unlikely to be answered a year
 later.
+
+The rounds we give now are those of the register that the regex
+matches; the carry-over (\cref{CarryoverCommand}) needs them too.
 Piped, [[nytid courses ls]] prints one [[register<tab>course]] line per
 course, hence the [[cut]]; the [[sort]] makes the output independent of
 the order the register keeps.
+<<functions>>=
+current_rounds() {
+  nytid courses ls 2>/dev/null | cut -f 2 | grep -E "$1" | sort
+}
+@
 
 The regex is the subject's if [[nytid]] wrote the subject.
 <<functions>>=

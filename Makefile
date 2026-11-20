@@ -6,7 +6,7 @@ TEX_PYTHONTEX=	yes
 
 edumail.pdf: edumail.tex didactic.sty
 edumail.pdf: abstract.tex preamble.tex
-edumail.pdf: edumail
+edumail.pdf: edumail carryover.rules
 
 edumail.tex: edumail.nw
 
@@ -26,12 +26,15 @@ nymutt.tex: nymutt.nw
 
 
 .PHONY:
-all: edumail nymutt mutt .muttrc.nytid labels.rules
+all: edumail nymutt mutt .muttrc.nytid labels.rules carryover.rules
 
 edumail.sh: edumail.nw
 edumail: edumail.sh
 	cp $^ $@
 	chmod +x $@
+
+carryover.rules: edumail.nw
+	${NOTANGLE.sh}
 
 nymutt.sh mutt.sh: nymutt.nw
 	${NOTANGLE.sh}
@@ -50,19 +53,24 @@ mutt: mutt.sh
 
 .PHONY: clean
 clean:
-	${RM} edumail edumail.sh edumail.pdf edumail.tex
+	${RM} edumail edumail.sh edumail.pdf edumail.tex carryover.rules
 	${RM} nymutt nymutt.sh mutt mutt.sh
 	${RM} .muttrc.nytid labels.rules nymutt.pdf nymutt.tex
 
 
 .PHONY: install
 PREFIX=${HOME}
-install: edumail nymutt mutt .muttrc.nytid labels.rules
+# carryover.sh reads its rules from here
+CANVASLMS_CONFIG=$${XDG_CONFIG_HOME:-$${HOME}/.config}/canvaslms
+install: edumail nymutt mutt .muttrc.nytid labels.rules carryover.rules
 	install -m 755 edumail nymutt mutt ${PREFIX}/bin
 	install -m 644 .muttrc.nytid ${HOME}/.muttrc.nytid
 	mkdir -p ${HOME}/.config/edumail
 	[ -e ${HOME}/.config/edumail/labels.rules ] \
 	  || install -m 644 labels.rules ${HOME}/.config/edumail/labels.rules
+	mkdir -p ${CANVASLMS_CONFIG}
+	[ -e ${CANVASLMS_CONFIG}/carryover.rules ] \
+	  || install -m 644 carryover.rules ${CANVASLMS_CONFIG}/carryover.rules
 
 .PHONY: release
 release: edumail.pdf edumail
