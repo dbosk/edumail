@@ -946,10 +946,34 @@ Each counted as a named course, with its year stripped; when no
 course of ours was named, it became a label ([[ht]], [[stud]],
 [[ab]]), and since a named course turns off the guesses, it also hid
 the courses that the email's words suggest.
+Mail from programs is full of such words.
+\begin{example}\label{email16}
+A cron job fails to reach the password manager and then Canvas.
+\inputminted[breaklines,breakanywhere,fontsize=\footnotesize,
+             highlightlines={2,23,26}]{text}{email16.txt}
+\end{example}
+\begin{example}\label{email18}
+GitHub tells us that a bot wants to update two of a project's
+dependencies.
+\inputminted[breaklines,breakanywhere,fontsize=\footnotesize,
+             highlightlines={2,22,27,41}]{text}{email18.txt}
+\end{example}
+\Cref{email16} got the labels [[f]] and [[v]], from the [[f90]] that
+ends a memory address and the [[v22]] of the Node.js version.
+\Cref{email18} got twelve.
+Eleven came from its commit hashes: [[9bc0665]] ends in a course code,
+[[BC0665]], and [[4adcd02]] holds a nick name, [[adcd]].
+The lookbehind above takes care of those, since in a hash a digit or a
+letter stands in front of them, as it does of the [[f90]].
+It does nothing for the [[v22]], nor for the [[xx77]] that ends a
+security advisory, [[GHSA-8988-9cw3-xx77]]:
+both stand alone, behind a space and a hyphen, and with the old pattern
+they counted as the courses [[v]] and [[xx]].
 So we only read nick names that we know, with their year.
 A nick name of someone else's course, such as [[tilda23]], no longer
 counts as named; a rules file that knows the course can still label
 the email (\cref{LabelRules}).
+Both emails now yield no course at all (\cref{LabelsTesting}).
 <<variables>>=
 COURSE_NICK="${NOT_IN_WORD_BEFORE}(${KNOWN_NICKS})[0-9]{2}"
 COURSE_NICK="${COURSE_NICK}${NOT_IN_WORD_AFTER}"
@@ -2244,9 +2268,12 @@ A cron job reports that the nightly backup failed.
 The word \enquote{ssh} is what a datintro student writes about, and
 here it occurs three times.
 \end{example}
-Guessed from its words, \cref{email9} is a datintro email, module and
-all; a GitHub notification fares no better, since \enquote{git} is in
-its sender's name.
+No student wrote \cref{email9}, so we guess only from its subject, as
+for \cref{email11}, and the body's \enquote{ssh} goes unread.
+But cron writes the job's command line into the subject, and a command
+line names the tools the job runs:
+had the backup been run as [[rsync -e ssh]], the subject alone would
+make it a datintro email, module and all (\cref{LabelsTesting}).
 What a program \emph{states} is evidence all the same:
 a script that reports grades names the course code and the assignment
 group it reported.
@@ -2802,12 +2829,23 @@ print_verbatim(output.stdout)
 
 \Cref{email9} shows the guesses at work on a program's output, and what
 a [[stream:]] rule does about them.
-With no rules, the cron job's \enquote{ssh} makes it a datintro email,
-module and all:
+With no rules, the email as it stands yields nothing: no student wrote
+it, so only its subject is searched, and the body's \enquote{ssh} is
+not read.
+Had the job been the [[rsync]] command itself, cron would have written
+that command line, \enquote{ssh} and all, into the subject, and the
+subject makes it a datintro email, module and all:
 \begin{pycode}
-output = subprocess.run(["./edumail", "labels", "email9.txt"],
-                        capture_output=True, env=norules)
-print_verbatim(output.stdout)
+cron = open("email9.txt").read()
+rsync = cron.replace("${HOME}/.backup",
+                     "rsync -a -e ssh ${HOME} server.example.org:backup")
+lines = []
+for name, text in [("as it stands", cron), ("rsync -e ssh", rsync)]:
+    output = subprocess.run(["./edumail", "labels"], input=text.encode(),
+                            capture_output=True, env=norules)
+    labels = " ".join(output.stdout.decode().split()) or "(nothing)"
+    lines.append(f"{name}: {labels}")
+print_verbatim("\n".join(lines))
 \end{pycode}
 A [[from:]] rule for the daemon adds its label and changes nothing else,
 whereas the same rule as a [[stream:]] rule also takes the guesses away:
@@ -2818,10 +2856,46 @@ for prefix in ["from", "stream"]:
     rules = tempfile.NamedTemporaryFile("w", suffix=".rules", delete=False)
     rules.write(f"{prefix}:Cron\\sDaemon  admin\n")
     rules.close()
-    output = subprocess.run(["./edumail", "labels", "email9.txt"],
+    output = subprocess.run(["./edumail", "labels"], input=rsync.encode(),
                             capture_output=True,
                             env=dict(norules, LABELS_RULES=rules.name))
     lines.append(f"{prefix}: " + " ".join(output.stdout.decode().split()))
+print_verbatim("\n".join(lines))
+\end{pycode}
+
+\Cref{email16,email18} used to collect labels from what the programs
+printed.
+Now they yield nothing without rules, and with the [[stream:]] rules
+for their senders, as the seed rules in the [[nymutt]] documentation
+have them, only those rules' labels.
+A [[stream:]] rule keeps the named courses, so before, the cron job had
+been [[admin f v]] even with its rule.
+\begin{pycode}
+rules = tempfile.NamedTemporaryFile("w", suffix=".rules", delete=False)
+rules.write("stream:Cron\\sDaemon  admin\n"
+            "stream:GitHub|notifications@github\\.com  devel\n")
+rules.close()
+lines = []
+for email in ["email16.txt", "email18.txt"]:
+    for name, env in [("no rules", norules),
+                      ("stream rules", dict(norules, LABELS_RULES=rules.name))]:
+        output = subprocess.run(["./edumail", "labels", email],
+                                capture_output=True, env=env)
+        labels = " ".join(output.stdout.decode().split()) or "(nothing)"
+        lines.append(f"{email}, {name}: {labels}")
+print_verbatim("\n".join(lines))
+\end{pycode}
+That alone would not show the patterns at work, though:
+[[known_courses]] drops whatever is not ours, so it would hide a
+pattern that let the look-alikes in again.
+So let's also see what the patterns themselves read as named courses:
+\begin{pycode}
+lines = []
+for email in ["email16.txt", "email18.txt"]:
+    output = subprocess.run(["./edumail", "named_courses", email],
+                            capture_output=True, env=norules)
+    courses = " ".join(output.stdout.decode().split()) or "(nothing)"
+    lines.append(f"{email}: {courses}")
 print_verbatim("\n".join(lines))
 \end{pycode}
 

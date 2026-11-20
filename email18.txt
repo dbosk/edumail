@@ -1,0 +1,93 @@
+Date: Sun, 11 Oct 2026 23:37:50 -0700
+From: "dependabot[bot]" <notifications@github.com>
+To: dbosk/scholarcli <scholarcli@noreply.github.com>
+Cc: Subscribed <subscribed@noreply.github.com>
+Subject: [dbosk/scholarcli] Bump the uv group across 1 directory with 2
+ updates (PR #127)
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Content-Type: text/plain; charset=utf-8
+
+This automated pull request fixes a security vulnerability (moderate severity):
+https://github.com/dbosk/scholarcli/security/dependabot/51
+
+Learn more about Dependabot security updates:
+https://docs.github.com/github/managing-security-vulnerabilities/configuring-dependabot-security-updates
+
+&lt;details&gt;
+&lt;summary&gt;Commits&lt;/summary&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/1d41a6478e1562e68ff667fcd703356acf085f68&quot;&gt;&lt;code&gt;1d41a64&lt;/code&gt;&lt;/a&gt; chore: prepare 2.15.0 release&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/9bc06658f875b9b40091539140bbbdc4639161c3&quot;&gt;&lt;code&gt;9bc0665&lt;/code&gt;&lt;/a&gt; fix: make recursive payload tests deterministic&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/5fde08a6cf906aa7698de2d6391d88b73006b17b&quot;&gt;&lt;code&gt;5fde08a&lt;/code&gt;&lt;/a&gt; fix: normalize recursive JWT payload errors&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/171062d2d734315272a901100aa4b109f2fc3c19&quot;&gt;&lt;code&gt;171062d&lt;/code&gt;&lt;/a&gt; utils: mention bytes in force_bytes type error (&lt;a href=&quot;https://redirect.github.com/maintainer/pyjwt/issues/1173&quot;&gt;#1173&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/c9d4d5375bf464ef363506fed9eb6e7f33217ab6&quot;&gt;&lt;code&gt;c9d4d53&lt;/code&gt;&lt;/a&gt; docs/conf: drop duplicate 'and' from read() docstring (&lt;a href=&quot;https://redirect.github.com/maintainer/pyjwt/issues/1174&quot;&gt;#1174&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/2763752196113e1473b0ed7905aa6034aedfbe53&quot;&gt;&lt;code&gt;2763752&lt;/code&gt;&lt;/a&gt; Add support for Python 3.15 (&lt;a href=&quot;https://redirect.github.com/maintainer/pyjwt/issues/1202&quot;&gt;#1202&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/4adcd02722f5011c60079d3978dfc167b9a8eaa5&quot;&gt;&lt;code&gt;4adcd02&lt;/code&gt;&lt;/a&gt; Catch http.client.HTTPException in PyJWKClient.fetch_data (&lt;a href=&quot;https://redirect.github.com/maintainer/pyjwt/issues/1201&quot;&gt;#1201&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/9e501d993b4d3e7dba14bdb1722b1d993ac75097&quot;&gt;&lt;code&gt;9e501d9&lt;/code&gt;&lt;/a&gt; fix: correct docstring typo in _validate_jti (&lt;a href=&quot;https://redirect.github.com/maintainer/pyjwt/issues/1179&quot;&gt;#1179&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/4047c44d51950ffda15f40054508d3f17c43b1e2&quot;&gt;&lt;code&gt;4047c44&lt;/code&gt;&lt;/a&gt; docs: clarify JWK certificate member handling (&lt;a href=&quot;https://redirect.github.com/maintainer/pyjwt/issues/1212&quot;&gt;#1212&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&quot;https://github.com/maintainer/pyjwt/commit/f4e2b59f543cc82d46d9d69922bba59e804216b9&quot;&gt;&lt;code&gt;f4e2b59&lt;/code&gt;&lt;/a&gt; [pre-commit.ci] pre-commit autoupdate (&lt;a href=&quot;https://redirect.github.com/maintainer/pyjwt/issues/1210&quot;&gt;#1210&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Additional commits viewable in &lt;a href=&quot;https://github.com/maintainer/pyjwt/compare/2.13.0...2.15.0&quot;&gt;compare view&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/details&gt;
+
+&lt;br /&gt;</code></pre>
+
+Updates `urllib3` from 2.7.0 to 2.8.0
+<h2>Security</h2>
+<p>Fixed the following security issues:</p>
+<ul>
+<li>The TLS configuration for HTTPS proxies could be ignored or overridden. (High severity, GHSA-8988-9cw3-xx77)</li>
+<li><code>HTTPResponse.stream()</code> and <code>read_chunked()</code> could buffer a chunk-size line of unbounded length in memory. (High severity, GHSA-vxq7-64xx-v4gw)</li>
+<li>Chunked Deflate streaming could enter an infinite loop. (Medium severity, GHSA-gh4c-6fx4-qh6g)</li>
+</ul>
+<details>
+<summary>Commits</summary>
+<ul>
+<li><a href="https://github.com/urllib3/urllib3/commit/b1d30ab61fe0db8f11092805e8c5ac43e091064a"><code>b1d30ab</code></a> Release 2.8.0</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/9016d7e8afc68185496ef07f3c3a4a743d04922e"><code>9016d7e</code></a> Skip <code>test_read_chunked_with_trailing_data_does_not_hang</code> for brotlicffi (<a href="https://redirect.github.com/urllib3/urllib3/issues/5258">#5258</a>)</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/9101f581a8b3659af23b6ff335ae77200ca33533"><code>9101f58</code></a> Fix <code>nox -s docs</code> warning (<a href="https://redirect.github.com/urllib3/urllib3/issues/5256">#5256</a>)</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/cd770b059b543be29298ea5c52afb0b1b090f5ed"><code>cd770b0</code></a> Merge commit from fork</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/ea2ad7b21a80da3632f80016526a18864586077f"><code>ea2ad7b</code></a> Merge commit from fork</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/0716e31534345dc1599ea95d903c79f276239bd8"><code>0716e31</code></a> Fix loading unencrypted client keys with a password in pyOpenSSL (<a href="https://redirect.github.com/urllib3/urllib3/issues/5255">#5255</a>)</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/43c68c8b43a9dcb44ed2cf4ec91384ca0d46b37d"><code>43c68c8</code></a> Test pickling of <code>InvalidChunkLength</code> (<a href="https://redirect.github.com/urllib3/urllib3/issues/5247">#5247</a>)</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/308b279b3fb28e7bee952e152ec5baeb5bfd0817"><code>308b279</code></a> Share security policy between GitHub and Read the Docs (<a href="https://redirect.github.com/urllib3/urllib3/issues/5253">#5253</a>)</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/53fa0731b27d4b71ab0755ea5b896422d005d706"><code>53fa073</code></a> Add policy on duplicate pull requests (<a href="https://redirect.github.com/urllib3/urllib3/issues/5252">#5252</a>)</li>
+<li><a href="https://github.com/urllib3/urllib3/commit/5f2a6a843d0100d1351c3f94d58581ca98d17267"><code>5f2a6a8</code></a> Assert on the ALPN extension in test_tunnel_sets_http_11_alpn (<a href="https://redirect.github.com/urllib3/urllib3/issues/5232">#5232</a>)</li>
+<li>Additional commits viewable in <a href="https://github.com/urllib3/urllib3/compare/2.7.0...2.8.0">compare view</a></li>
+</ul>
+</details>
+<br />
+
+
+Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.
+
+[//]: # (dependabot-automerge-start)
+[//]: # (dependabot-automerge-end)
+
+---
+
+You can view, comment on, or merge this pull request online at:
+
+  https://github.com/dbosk/scholarcli/pull/127
+
+-- Commit Summary --
+
+  * Bump the uv group across 1 directory with 2 updates
+
+-- File Changes --
+
+    M uv.lock (12)
+
+-- Patch Links --
+
+https://github.com/dbosk/scholarcli/pull/127.patch
+https://github.com/dbosk/scholarcli/pull/127.diff
+
+-- 
+Reply to this email directly or view it on GitHub:
+https://github.com/dbosk/scholarcli/pull/127
+You are receiving this because you are subscribed to this thread.
+
+Message ID: <dbosk/scholarcli/pull/127@github.com>

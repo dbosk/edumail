@@ -1,0 +1,26 @@
+Date: Sun, 18 Oct 2026 18:52:42 +0200 (CEST)
+From: Cron Daemon <root@laptop.example.org>
+To: dbosk@laptop.example.org
+Subject: Cron <dbosk@laptop> ${HOME}/.hourly
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Content-Type: text/plain; charset=utf-8
+
+Unable to fetch ServerConfig from https://api.bitwarden.com FetchError: request to https://api.bitwarden.com/config failed, reason: connect ETIMEDOUT 10.0.0.1:443
+    at ClientRequest.<anonymous> (/snapshot/clients/node_modules/node-fetch/lib/index.js:1501:11)
+    at ClientRequest.emit (node:events:518:28)
+    at emitErrorEvent (node:_http_client:104:11)
+    at TLSSocket.socketErrorListener (node:_http_client:518:5)
+    at TLSSocket.emit (node:events:518:28)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  type: 'system',
+  errno: 'ETIMEDOUT',
+  code: 'ETIMEDOUT'
+}
+
+Node.js v22.15.1
+Failed to update credentials from bitwarden
+[WARNING] Retrying (Retry(total=9, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectTimeoutError(<HTTPSConnection(host='canvas.kth.se', port=443) at 0x78c8c36d86e0>, 'Connection to canvas.kth.se timed out. (connect timeout=None)')': /api/v1/calendar_events?start_date=2026-10-17T22%3A00%3A00Z&end_date=2026-11-01T22%3A59%3A00Z&context_codes%5B%5D=course_63874&per_page=100
+[WARNING] Retrying (Retry(total=8, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectTimeoutError(<HTTPSConnection(host='canvas.kth.se', port=443) at 0x78c8c3599f90>, 'Connection to canvas.kth.se timed out. (connect timeout=None)')': /api/v1/calendar_events?start_date=2026-10-17T22%3A00%3A00Z&end_date=2026-11-01T22%3A59%3A00Z&context_codes%5B%5D=course_63874&per_page=100
